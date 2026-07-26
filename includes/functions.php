@@ -80,7 +80,7 @@ function showFlash() {
 // ─── Settings ────────────────────────────────────────────────
 
 function getSetting($key) {
-    $db  = getDB();
+    $db   = getDB();
     $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
     $stmt->execute([$key]);
     $row = $stmt->fetch();
@@ -88,7 +88,7 @@ function getSetting($key) {
 }
 
 function updateSetting($key, $value) {
-    $db = getDB();
+    $db   = getDB();
     $stmt = $db->prepare("INSERT INTO system_settings (setting_key, setting_value)
                           VALUES (?, ?)
                           ON DUPLICATE KEY UPDATE setting_value = ?");
@@ -106,26 +106,21 @@ function getAttendanceStatus($timeIn) {
 }
 
 function getDashboardStats() {
-    $db   = getDB();
+    $db    = getDB();
     $today = date('Y-m-d');
-
     $stats = [];
 
-    // Total active students
     $stmt = $db->query("SELECT COUNT(*) as cnt FROM students WHERE is_active = 1");
     $stats['total_students'] = $stmt->fetch()['cnt'];
 
-    // Present today
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM attendance WHERE date = ? AND status IN ('present','late')");
     $stmt->execute([$today]);
     $stats['present_today'] = $stmt->fetch()['cnt'];
 
-    // Absent today
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM attendance WHERE date = ? AND status = 'absent'");
     $stmt->execute([$today]);
     $stats['absent_today'] = $stmt->fetch()['cnt'];
 
-    // Late today
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM attendance WHERE date = ? AND status = 'late'");
     $stmt->execute([$today]);
     $stats['late_today'] = $stmt->fetch()['cnt'];
@@ -145,61 +140,68 @@ function sanitize($input) {
     return htmlspecialchars(strip_tags(trim($input)));
 }
 
-// ─── Format phone number for Semaphore ──────────────────────
+// ─── Format phone number for UniSMS (+63 format) ─────────────
 
 function formatPhone($number) {
-    $number = preg_replace('/\D/', '', $number);
+    $number = preg_replace('/\D/', '', $number); // strip non-digits
     if (substr($number, 0, 2) === '09') {
-        $number = '63' . substr($number, 1);
+        $number = '+63' . substr($number, 1);    // 09XX → +639XX
+    } elseif (substr($number, 0, 2) === '63') {
+        $number = '+' . $number;                 // 639XX → +639XX
     }
     return $number;
 }
 
-// ─── SMS via Semaphore API ────────────────────────────────────
+// ─── SMS via UniSMS API ───────────────────────────────────────
 
 function sendSMS($number, $message, $studentId, $type) {
     $db     = getDB();
-    $apiKey = getSetting('semaphore_api_key');
-    $sender = getSetting('semaphore_sender_name') ?? 'SPCCS';
+    $apiKey = getSetting('unisms_api_key');
 
     if (empty($apiKey)) {
-        // Log as failed - no API key
-        $stmt = $db->prepare("INSERT INTO sms_logs (student_id, recipient_number, message, type, status, api_response)
-                               VALUES (?, ?, ?, ?, 'failed', 'No API key configured')");
+        $stmt = $db->prepare("INSERT INTO sms_logs
+            (student_id, recipient_number, message, type, status, api_response)
+            VALUES (?, ?, ?, ?, 'failed', 'No API key configured')");
         $stmt->execute([$studentId, $number, $message, $type]);
         return false;
     }
 
-    $phone = formatPhone($number);
-    $url   = 'https://api.semaphore.co/api/v4/messages';
-    $data  = [
-        'apikey'      => $apiKey,
-        'number'      => $phone,
-        'message'     => $message,
-        'sendername'  => $sender,
-    ];
+    require_once BASE_PATH . 'includes/UniSms.php';
 
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($data),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 30,
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
+    $phone    = formatPhone($number);
+    $senderId = getSetting('unisms_sender_id') ?? 'UnisoftSMS';
 
-    $response   = curl_exec($ch);
-    $httpCode   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError  = curl_error($ch);
-    curl_close($ch);
+    try {
+        $client            = new UniSms($apiKey);
+        $client->recipient = $phone;
+        $client->content   = $message;
+        $client->sender_id = $senderId;
 
-    $status = ($httpCode === 200 && !$curlError) ? 'sent' : 'failed';
+        $response = $client->send();
 
-    // Log SMS
-    $stmt = $db->prepare("INSERT INTO sms_logs (student_id, recipient_number, message, type, status, api_response)
-                           VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$studentId, $phone, $message, $type, $status, $response ?: $curlError]);
+        if ($response === false) {
+            $status      = 'failed';
+            $apiResponse = 'cURL returned false';
+        } else {
+            $decoded     = json_decode($response, true);
+            $apiResponse = $response;
+
+            $status = (
+                json_last_error() === JSON_ERROR_NONE &&
+                isset($decoded['message']['status']) &&
+                $decoded['message']['status'] === 'sent'
+            ) ? 'sent' : 'failed';
+        }
+
+    } catch (Exception $e) {
+        $status      = 'failed';
+        $apiResponse = $e->getMessage();
+    }
+
+    $stmt = $db->prepare("INSERT INTO sms_logs
+        (student_id, recipient_number, message, type, status, api_response)
+        VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$studentId, $phone, $message, $type, $status, $apiResponse]);
 
     return $status === 'sent';
 }
@@ -224,14 +226,12 @@ function paginate($totalRecords, $perPage, $currentPage, $url) {
 
     $html = '<nav><ul class="pagination pagination-sm mb-0">';
 
-    // Prev
     $prevDisabled = $currentPage <= 1 ? 'disabled' : '';
     $prevPage     = max(1, $currentPage - 1);
     $html .= "<li class='page-item {$prevDisabled}'>
                 <a class='page-link' href='{$url}&page={$prevPage}'>«</a>
               </li>";
 
-    // Pages
     for ($i = 1; $i <= $totalPages; $i++) {
         $active = $i === $currentPage ? 'active' : '';
         $html  .= "<li class='page-item {$active}'>
@@ -239,7 +239,6 @@ function paginate($totalRecords, $perPage, $currentPage, $url) {
                    </li>";
     }
 
-    // Next
     $nextDisabled = $currentPage >= $totalPages ? 'disabled' : '';
     $nextPage     = min($totalPages, $currentPage + 1);
     $html .= "<li class='page-item {$nextDisabled}'>

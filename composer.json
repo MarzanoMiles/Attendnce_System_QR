@@ -1,6 +1,5 @@
 {
     "require": {
-        "simplesoftwareio/simple-qrcode": "^4.2",
         "bacon/bacon-qr-code": "^2.0"
     },
     "autoload": {
