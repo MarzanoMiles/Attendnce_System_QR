@@ -1,163 +1,327 @@
--- attendance_system.sql
--- Full database schema for Automated Student Attendance Monitoring System
--- San Pablo City Central School - Kindergarten Department
+-- phpMyAdmin SQL Dump
+-- version 5.2.3
+-- https://www.phpmyadmin.net/
+--
+-- Host: 127.0.0.1:3306
+-- Generation Time: Jul 26, 2026 at 03:34 PM
+-- Server version: 9.7.0
+-- PHP Version: 8.5.6
 
-CREATE DATABASE IF NOT EXISTS attendance_system;
-USE attendance_system;
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
 
--- ============================================================
--- TABLE: users (admin + teachers)
--- ============================================================
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    full_name VARCHAR(100) NOT NULL,
-    email VARCHAR(100),
-    role ENUM('admin','teacher') NOT NULL DEFAULT 'teacher',
-    is_active TINYINT(1) DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
 
--- ============================================================
--- TABLE: sections (kindergarten sections)
--- ============================================================
-CREATE TABLE sections (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    section_name VARCHAR(50) NOT NULL,
-    adviser_id INT,
-    school_year VARCHAR(20) DEFAULT '2024-2025',
-    is_active TINYINT(1) DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (adviser_id) REFERENCES users(id) ON DELETE SET NULL
-) ENGINE=InnoDB;
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
 
--- ============================================================
--- TABLE: students
--- ============================================================
-CREATE TABLE students (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    lrn VARCHAR(20) UNIQUE,                      -- Learner Reference Number
-    first_name VARCHAR(50) NOT NULL,
-    middle_name VARCHAR(50),
-    last_name VARCHAR(50) NOT NULL,
-    gender ENUM('Male','Female') NOT NULL,
-    birth_date DATE,
-    address TEXT,
-    section_id INT,
-    photo VARCHAR(255) DEFAULT 'default.png',
-    qr_code VARCHAR(255),                        -- path to QR image
-    qr_token VARCHAR(100) UNIQUE,                -- unique scan token
-    parent_name VARCHAR(100),
-    parent_contact VARCHAR(20),                  -- for SMS
-    parent_email VARCHAR(100),
-    is_active TINYINT(1) DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE SET NULL
-) ENGINE=InnoDB;
+--
+-- Database: `attendance_system`
+--
 
--- ============================================================
--- TABLE: attendance
--- ============================================================
-CREATE TABLE attendance (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    date DATE NOT NULL,
-    time_in TIME,
-    time_out TIME,
-    status ENUM('present','absent','late','excused') DEFAULT 'present',
-    remarks TEXT,
-    recorded_by INT,                             -- user who recorded
-    scan_type ENUM('qr','manual') DEFAULT 'qr',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE KEY unique_attendance (student_id, date)  -- one record per day
-) ENGINE=InnoDB;
+-- --------------------------------------------------------
 
--- ============================================================
--- TABLE: sms_logs
--- ============================================================
-CREATE TABLE sms_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT,
-    recipient_number VARCHAR(20) NOT NULL,
-    message TEXT NOT NULL,
-    type ENUM('arrival','departure','absence') NOT NULL,
-    status ENUM('sent','failed','pending') DEFAULT 'pending',
-    api_response TEXT,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL
-) ENGINE=InnoDB;
+--
+-- Table structure for table `attendance`
+--
 
--- ============================================================
--- TABLE: system_settings
--- ============================================================
-CREATE TABLE system_settings (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    setting_key VARCHAR(100) NOT NULL UNIQUE,
-    setting_value TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+CREATE TABLE `attendance` (
+  `id` int NOT NULL,
+  `student_id` int NOT NULL,
+  `date` date NOT NULL,
+  `time_in` time DEFAULT NULL,
+  `time_out` time DEFAULT NULL,
+  `status` enum('present','absent','late','excused') DEFAULT 'present',
+  `remarks` text,
+  `recorded_by` int DEFAULT NULL,
+  `scan_type` enum('qr','manual') DEFAULT 'qr',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- ============================================================
--- SEED: Default admin user (password: admin123)
--- ============================================================
-INSERT INTO users (username, password, full_name, email, role) VALUES
-('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin@spccs.edu.ph', 'admin'),
-('teacher1', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Maria Santos', 'msantos@spccs.edu.ph', 'teacher'),
-('teacher2', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Jose Reyes', 'jreyes@spccs.edu.ph', 'teacher');
+--
+-- Dumping data for table `attendance`
+--
 
--- NOTE: Password hash above is for 'password' (Laravel default hash used for demo)
--- For production use: password_hash('admin123', PASSWORD_BCRYPT)
--- Run this to get the correct hash and update manually.
+INSERT INTO `attendance` (`id`, `student_id`, `date`, `time_in`, `time_out`, `status`, `remarks`, `recorded_by`, `scan_type`, `created_at`, `updated_at`) VALUES
+(1, 1, '2026-05-16', '07:15:00', NULL, 'present', NULL, 2, 'qr', '2026-05-16 04:58:40', '2026-05-16 04:58:40'),
+(2, 2, '2026-05-16', '07:45:00', NULL, 'late', NULL, 2, 'qr', '2026-05-16 04:58:40', '2026-05-16 04:58:40'),
+(3, 3, '2026-05-16', NULL, NULL, 'absent', NULL, 3, 'manual', '2026-05-16 04:58:40', '2026-05-16 04:58:40'),
+(4, 4, '2026-05-16', '07:10:00', '11:30:00', 'present', NULL, 3, 'qr', '2026-05-16 04:58:40', '2026-05-16 04:58:40'),
+(5, 5, '2026-05-16', '07:20:00', NULL, 'present', NULL, 2, 'qr', '2026-05-16 04:58:40', '2026-05-16 04:58:40'),
+(6, 1, '2026-05-18', '09:01:28', NULL, 'late', NULL, 1, 'qr', '2026-05-18 09:01:28', '2026-05-18 09:01:28'),
+(7, 6, '2026-07-26', '14:36:06', '14:38:31', 'late', NULL, 1, 'qr', '2026-07-26 14:36:06', '2026-07-26 14:38:31');
 
--- ============================================================
--- SEED: Sections
--- ============================================================
-INSERT INTO sections (section_name, adviser_id, school_year) VALUES
-('Sampaguita', 2, '2024-2025'),
-('Rosal', 3, '2024-2025'),
-('Camia', NULL, '2024-2025');
+-- --------------------------------------------------------
 
--- ============================================================
--- SEED: Sample students
--- ============================================================
-INSERT INTO students (lrn, first_name, middle_name, last_name, gender, birth_date, section_id, parent_name, parent_contact, qr_token) VALUES
-('100000000001', 'Juan', 'Cruz', 'Dela Cruz', 'Male', '2019-03-15', 1, 'Maria Dela Cruz', '09171234567', 'STU-100000000001-A1B2C3'),
-('100000000002', 'Ana', 'Reyes', 'Santos', 'Female', '2019-06-20', 1, 'Pedro Santos', '09182345678', 'STU-100000000002-D4E5F6'),
-('100000000003', 'Miguel', 'Gomez', 'Garcia', 'Male', '2019-01-10', 2, 'Rosa Garcia', '09193456789', 'STU-100000000003-G7H8I9'),
-('100000000004', 'Sofia', 'Lim', 'Torres', 'Female', '2019-09-05', 2, 'Luis Torres', '09204567890', 'STU-100000000004-J1K2L3'),
-('100000000005', 'Carlos', 'Bautista', 'Villanueva', 'Male', '2019-04-22', 1, 'Carmen Villanueva', '09215678901', 'STU-100000000005-M4N5O6');
+--
+-- Table structure for table `sections`
+--
 
--- ============================================================
--- SEED: System settings
--- ============================================================
-INSERT INTO system_settings (setting_key, setting_value) VALUES
-('school_name', 'San Pablo City Central School'),
-('school_address', 'San Pablo City, Laguna'),
-('school_year', '2024-2025'),
-('grade_level', 'Kindergarten'),
-('time_in_start', '07:00:00'),
-('time_in_end', '08:00:00'),
-('late_threshold', '07:31:00'),
-('time_out_start', '11:00:00'),
-('time_out_end', '12:00:00'),
-('semaphore_api_key', ''),
-('semaphore_sender_name', 'SPCCS'),
-('sms_arrival_template', 'Good day! {student_name} has arrived at school at {time}. - SPCCS Kindergarten'),
-('sms_departure_template', 'Good day! {student_name} has left school at {time}. - SPCCS Kindergarten'),
-('sms_absence_template', 'Good day! {student_name} was marked ABSENT today {date}. Please inform the school. - SPCCS Kindergarten');
+CREATE TABLE `sections` (
+  `id` int NOT NULL,
+  `section_name` varchar(50) NOT NULL,
+  `adviser_id` int DEFAULT NULL,
+  `school_year` varchar(20) DEFAULT '2024-2025',
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- ============================================================
--- SEED: Sample attendance records
--- ============================================================
-INSERT INTO attendance (student_id, date, time_in, time_out, status, scan_type, recorded_by) VALUES
-(1, CURDATE(), '07:15:00', NULL, 'present', 'qr', 2),
-(2, CURDATE(), '07:45:00', NULL, 'late', 'qr', 2),
-(3, CURDATE(), NULL, NULL, 'absent', 'manual', 3),
-(4, CURDATE(), '07:10:00', '11:30:00', 'present', 'qr', 3),
-(5, CURDATE(), '07:20:00', NULL, 'present', 'qr', 2);
+--
+-- Dumping data for table `sections`
+--
+
+INSERT INTO `sections` (`id`, `section_name`, `adviser_id`, `school_year`, `is_active`, `created_at`) VALUES
+(1, 'Sampaguita', 2, '2024-2025', 1, '2026-05-16 04:58:39'),
+(2, 'Rosal', 3, '2024-2025', 1, '2026-05-16 04:58:39'),
+(3, 'Camia', NULL, '2024-2025', 1, '2026-05-16 04:58:39');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `sms_logs`
+--
+
+CREATE TABLE `sms_logs` (
+  `id` int NOT NULL,
+  `student_id` int DEFAULT NULL,
+  `recipient_number` varchar(20) NOT NULL,
+  `message` text NOT NULL,
+  `type` enum('arrival','departure','absence') NOT NULL,
+  `status` enum('sent','failed','pending') DEFAULT 'pending',
+  `api_response` text,
+  `sent_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `sms_logs`
+--
+
+INSERT INTO `sms_logs` (`id`, `student_id`, `recipient_number`, `message`, `type`, `status`, `api_response`, `sent_at`) VALUES
+(1, 1, '09171234567', 'Good day! Juan Dela Cruz has arrived at school at 09:01 AM. - SPCCS Kindergarten', 'arrival', 'failed', 'No API key configured', '2026-05-18 09:01:28'),
+(2, 6, '+639955425054', 'Good day! Miles Marzano has arrived at school at 02:36 PM. - SPCCS Kindergarten', 'arrival', 'failed', '{\"message\":{\"status\":\"pending\",\"metadata\":{},\"content\":\"Good day! Miles Marzano has arrived at school at 02:36 PM. - SPCCS Kindergarten\",\"created\":\"2026-07-26T14:36:07Z\",\"sender_id\":\"UnisoftSMS\",\"reference_id\":\"msg_6e59925b-bef9-42bb-90ad-78f0628f9350\",\"fail_reason\":null,\"recipient\":\"+639955425054\"}}', '2026-07-26 14:36:07'),
+(3, 6, '+639955425054', 'Good day! Miles Marzano has left school at 02:38 PM. - SPCCS Kindergarten', 'departure', 'failed', '{\"message\":{\"status\":\"pending\",\"metadata\":{},\"content\":\"Good day! Miles Marzano has left school at 02:38 PM. - SPCCS Kindergarten\",\"created\":\"2026-07-26T14:38:31Z\",\"sender_id\":\"UnisoftSMS\",\"reference_id\":\"msg_c41dad4d-72a2-464a-bf16-e48f3e35aadb\",\"fail_reason\":null,\"recipient\":\"+639955425054\"}}', '2026-07-26 14:38:32');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `students`
+--
+
+CREATE TABLE `students` (
+  `id` int NOT NULL,
+  `lrn` varchar(20) DEFAULT NULL,
+  `first_name` varchar(50) NOT NULL,
+  `middle_name` varchar(50) DEFAULT NULL,
+  `last_name` varchar(50) NOT NULL,
+  `gender` enum('Male','Female') NOT NULL,
+  `birth_date` date DEFAULT NULL,
+  `address` text,
+  `section_id` int DEFAULT NULL,
+  `photo` varchar(255) DEFAULT 'default.png',
+  `qr_code` varchar(255) DEFAULT NULL,
+  `qr_token` varchar(100) DEFAULT NULL,
+  `parent_name` varchar(100) DEFAULT NULL,
+  `parent_contact` varchar(20) DEFAULT NULL,
+  `parent_email` varchar(100) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `students`
+--
+
+INSERT INTO `students` (`id`, `lrn`, `first_name`, `middle_name`, `last_name`, `gender`, `birth_date`, `address`, `section_id`, `photo`, `qr_code`, `qr_token`, `parent_name`, `parent_contact`, `parent_email`, `is_active`, `created_at`, `updated_at`) VALUES
+(1, '100000000001', 'Juan', 'Cruz', 'Dela Cruz', 'Male', '2019-03-15', NULL, 1, 'default.png', NULL, 'STU-100000000001-A1B2C3', 'Maria Dela Cruz', '09171234567', NULL, 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39'),
+(2, '100000000002', 'Ana', 'Reyes', 'Santos', 'Female', '2019-06-20', NULL, 1, 'default.png', NULL, 'STU-100000000002-D4E5F6', 'Pedro Santos', '09182345678', NULL, 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39'),
+(3, '100000000003', 'Miguel', 'Gomez', 'Garcia', 'Male', '2019-01-10', NULL, 2, 'default.png', NULL, 'STU-100000000003-G7H8I9', 'Rosa Garcia', '09193456789', NULL, 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39'),
+(4, '100000000004', 'Sofia', 'Lim', 'Torres', 'Female', '2019-09-05', NULL, 2, 'default.png', NULL, 'STU-100000000004-J1K2L3', 'Luis Torres', '09204567890', NULL, 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39'),
+(5, '100000000005', 'Carlos', 'Bautista', 'Villanueva', 'Male', '2019-04-22', NULL, 1, 'default.png', NULL, 'STU-100000000005-M4N5O6', 'Carmen Villanueva', '09215678901', NULL, 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39'),
+(6, '109773080078', 'Miles', 'Sevilla', 'Marzano', 'Male', '2002-10-19', 'Purok 3 brgy. San Nicolas San Pablo City, Laguna', 3, 'student_1785076472_5845.png', NULL, 'STU-109773080078-0DC019', 'Melanie S. Marzano', '09955425054', 'marzanomiles@gmail.com', 1, '2026-07-26 14:34:32', '2026-07-26 14:34:32');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `system_settings`
+--
+
+CREATE TABLE `system_settings` (
+  `id` int NOT NULL,
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `system_settings`
+--
+
+INSERT INTO `system_settings` (`id`, `setting_key`, `setting_value`, `updated_at`) VALUES
+(1, 'school_name', 'San Pablo City Central School', '2026-05-16 04:58:39'),
+(2, 'school_address', 'San Pablo City, Laguna', '2026-05-16 04:58:39'),
+(3, 'school_year', '2026-2027', '2026-07-26 14:23:28'),
+(4, 'grade_level', 'Kindergarten', '2026-05-16 04:58:39'),
+(5, 'time_in_start', '07:00:00', '2026-05-16 04:58:39'),
+(6, 'time_in_end', '08:00:00', '2026-05-16 04:58:39'),
+(7, 'late_threshold', '07:31:00', '2026-05-16 04:58:39'),
+(8, 'time_out_start', '11:00:00', '2026-05-16 04:58:39'),
+(9, 'time_out_end', '12:00:00', '2026-05-16 04:58:39'),
+(10, 'unisms_api_key', 'sk_e2648ee7-3fd4-4cef-974e-71a169c70bdb', '2026-07-26 14:25:49'),
+(11, 'unisms_sender_id', 'UnisoftSMS', '2026-07-26 14:16:31'),
+(12, 'sms_arrival_template', 'Good day! {student_name} has arrived at school at {time}. - SPCCS Kindergarten', '2026-05-16 04:58:39'),
+(13, 'sms_departure_template', 'Good day! {student_name} has left school at {time}. - SPCCS Kindergarten', '2026-05-16 04:58:39'),
+(14, 'sms_absence_template', 'Good day! {student_name} was marked ABSENT today {date}. Please inform the school. - SPCCS Kindergarten', '2026-05-16 04:58:39');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `users`
+--
+
+CREATE TABLE `users` (
+  `id` int NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `full_name` varchar(100) NOT NULL,
+  `email` varchar(100) DEFAULT NULL,
+  `role` enum('admin','teacher') NOT NULL DEFAULT 'teacher',
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `users`
+--
+
+INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `email`, `role`, `is_active`, `created_at`, `updated_at`) VALUES
+(1, 'admin', '$2y$12$qGnaviuQ7Lbu0uN8HPULDO5CCYRE7bbcNBtZeJmJ3WPDsnZH8sukS', 'System Administrator', 'admin@spccs.edu.ph', 'admin', 1, '2026-05-16 04:58:39', '2026-05-16 05:22:53'),
+(2, 'teacher1', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Maria Santos', 'msantos@spccs.edu.ph', 'teacher', 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39'),
+(3, 'teacher2', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Jose Reyes', 'jreyes@spccs.edu.ph', 'teacher', 1, '2026-05-16 04:58:39', '2026-05-16 04:58:39');
+
+--
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `attendance`
+--
+ALTER TABLE `attendance`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_attendance` (`student_id`,`date`),
+  ADD KEY `recorded_by` (`recorded_by`);
+
+--
+-- Indexes for table `sections`
+--
+ALTER TABLE `sections`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `adviser_id` (`adviser_id`);
+
+--
+-- Indexes for table `sms_logs`
+--
+ALTER TABLE `sms_logs`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `student_id` (`student_id`);
+
+--
+-- Indexes for table `students`
+--
+ALTER TABLE `students`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `lrn` (`lrn`),
+  ADD UNIQUE KEY `qr_token` (`qr_token`),
+  ADD KEY `section_id` (`section_id`);
+
+--
+-- Indexes for table `system_settings`
+--
+ALTER TABLE `system_settings`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `setting_key` (`setting_key`);
+
+--
+-- Indexes for table `users`
+--
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `username` (`username`);
+
+--
+-- AUTO_INCREMENT for dumped tables
+--
+
+--
+-- AUTO_INCREMENT for table `attendance`
+--
+ALTER TABLE `attendance`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT for table `sections`
+--
+ALTER TABLE `sections`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT for table `sms_logs`
+--
+ALTER TABLE `sms_logs`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT for table `students`
+--
+ALTER TABLE `students`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `system_settings`
+--
+ALTER TABLE `system_settings`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=71;
+
+--
+-- AUTO_INCREMENT for table `users`
+--
+ALTER TABLE `users`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- Constraints for dumped tables
+--
+
+--
+-- Constraints for table `attendance`
+--
+ALTER TABLE `attendance`
+  ADD CONSTRAINT `attendance_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `attendance_ibfk_2` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `sections`
+--
+ALTER TABLE `sections`
+  ADD CONSTRAINT `sections_ibfk_1` FOREIGN KEY (`adviser_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `sms_logs`
+--
+ALTER TABLE `sms_logs`
+  ADD CONSTRAINT `sms_logs_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `students`
+--
+ALTER TABLE `students`
+  ADD CONSTRAINT `students_ibfk_1` FOREIGN KEY (`section_id`) REFERENCES `sections` (`id`) ON DELETE SET NULL;
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

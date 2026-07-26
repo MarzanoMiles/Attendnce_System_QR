@@ -2,7 +2,7 @@
 echo '<h3>Imagick: ' . (extension_loaded('imagick') ? '✅ YES' : '❌ NO') . '</h3>';
 echo '<h3>GD: '      . (extension_loaded('gd')      ? '✅ YES' : '❌ NO') . '</h3>';
 
-// Test BaconQrCode SVG
+// Test BaconQrCode SVG (Tester only, no other connection, stand alone file)
 require_once './vendor/autoload.php';
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
