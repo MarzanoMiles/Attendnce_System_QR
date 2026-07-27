@@ -288,10 +288,17 @@ async function processToken(token, source = 'qr') {
                                 ${data.time}
                             </span>
                         </div>
-                        ${data.sms_sent
-                            ? '<div class="mt-1 small text-success"><i class="bi bi-chat-dots me-1"></i>SMS sent to parent</div>'
-                            : '<div class="mt-1 small text-muted"><i class="bi bi-chat-dots me-1"></i>SMS not configured</div>'
-                        }
+                        <div class="mt-2 small">
+                            <i class="bi bi-chat-dots me-1"></i>
+                            SMS: ${data.sms_sent
+                                ? '<span class="text-success">Sent</span>'
+                                : '<span class="text-muted">Not sent</span>'}
+                            &nbsp;|&nbsp;
+                            <i class="bi bi-envelope me-1"></i>
+                            Email: ${data.email_sent
+                                ? '<span class="text-success">Sent</span>'
+                                : '<span class="text-muted">Not sent</span>'}
+                        </div>
                     </div>
                 </div>
             `);

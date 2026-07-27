@@ -186,11 +186,20 @@ function sendSMS($number, $message, $studentId, $type) {
             $decoded     = json_decode($response, true);
             $apiResponse = $response;
 
-            $status = (
-                json_last_error() === JSON_ERROR_NONE &&
-                isset($decoded['message']['status']) &&
-                $decoded['message']['status'] === 'sent'
-            ) ? 'sent' : 'failed';
+            // Check all possible success indicators from UniSMS
+            $status = 'failed';
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                if (
+                    // Format 1: message.status = sent
+                    (isset($decoded['message']['status']) && $decoded['message']['status'] === 'sent') ||
+                    // Format 2: event = message.sent
+                    (isset($decoded['event']) && $decoded['event'] === 'message.sent') ||
+                    // Format 3: status = sent at root level
+                    (isset($decoded['status']) && $decoded['status'] === 'sent')
+                ) {
+                    $status = 'sent';
+                }
+            }
         }
 
     } catch (Exception $e) {
@@ -205,7 +214,6 @@ function sendSMS($number, $message, $studentId, $type) {
 
     return $status === 'sent';
 }
-
 // ─── SMS message builder ─────────────────────────────────────
 
 function buildSMSMessage($templateKey, $student) {

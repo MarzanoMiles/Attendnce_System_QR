@@ -1,13 +1,16 @@
 <?php
 /**
  * Scan Process — AJAX endpoint
- * Handles QR scan, records attendance, sends SMS
+ * Handles QR scan, records attendance, sends SMS + Email
  */
+error_reporting(E_ALL & ~E_DEPRECATED);
+ini_set('display_errors', 0);
+header('Content-Type: application/json');
+
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../includes/mail_helper.php';
 requireLogin();
-
-header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
@@ -45,60 +48,79 @@ $existStmt = $db->prepare("SELECT * FROM attendance WHERE student_id = ? AND dat
 $existStmt->execute([$student['id'], $today]);
 $existing = $existStmt->fetch();
 
-$smsSent = false;
-$type    = 'timein';
-$status  = getAttendanceStatus($now);
+$smsSent   = false;
+$emailSent = false;
+$type      = 'timein';
+$status    = getAttendanceStatus($now);
 
 if (!$existing) {
     // ── First scan → Time In ──────────────────────────────
+
     $stmt = $db->prepare("
         INSERT INTO attendance (student_id, date, time_in, status, scan_type, recorded_by)
         VALUES (?, ?, ?, ?, 'qr', ?)
     ");
     $stmt->execute([$student['id'], $today, $now, $status, currentUser()['id']]);
 
-    // Send arrival SMS
+    // SMS — arrival
     if (!empty($student['parent_contact'])) {
-        $message  = buildSMSMessage('sms_arrival_template', $student);
-        $smsSent  = sendSMS($student['parent_contact'], $message, $student['id'], 'arrival');
+        $message = buildSMSMessage('sms_arrival_template', $student);
+        $smsSent = sendSMS($student['parent_contact'], $message, $student['id'], 'arrival');
+    }
+
+    // Email — arrival
+    if (!empty($student['parent_email'])) {
+        $emailSent = sendArrivalEmail($student);
     }
 
 } elseif ($existing['time_in'] && !$existing['time_out']) {
-    // ── Second scan → Time Out ─────────────────────────────
+    // ── Second scan → Time Out ────────────────────────────
+
     $timeOutStart = getSetting('time_out_start') ?? '11:00:00';
+
     if (strtotime($now) < strtotime($timeOutStart)) {
         echo json_encode([
             'success' => false,
-            'message' => 'Too early for time-out. Time-out window starts at ' . date('h:i A', strtotime($timeOutStart)) . '.'
+            'message' => 'Too early for time-out. Time-out window starts at '
+                         . date('h:i A', strtotime($timeOutStart)) . '.'
         ]);
         exit;
     }
 
-    $type = 'timeout';
-    $db->prepare("UPDATE attendance SET time_out = ? WHERE id = ?")->execute([$now, $existing['id']]);
+    $type   = 'timeout';
     $status = $existing['status'];
 
-    // Send departure SMS
+    $db->prepare("UPDATE attendance SET time_out = ? WHERE id = ?")
+       ->execute([$now, $existing['id']]);
+
+    // SMS — departure
     if (!empty($student['parent_contact'])) {
         $message = buildSMSMessage('sms_departure_template', $student);
         $smsSent = sendSMS($student['parent_contact'], $message, $student['id'], 'departure');
     }
 
+    // Email — departure
+    if (!empty($student['parent_email'])) {
+        $emailSent = sendDepartureEmail($student);
+    }
+
 } else {
+    // ── Already fully recorded ────────────────────────────
     echo json_encode([
         'success' => false,
-        'message' => 'Student ' . $student['first_name'] . ' ' . $student['last_name'] .
+        'message' => $student['first_name'] . ' ' . $student['last_name'] .
                      ' has already been fully recorded today (Time-in and Time-out).'
     ]);
     exit;
 }
 
 echo json_encode([
-    'success'  => true,
-    'type'     => $type,
-    'status'   => $status,
-    'student'  => $student['first_name'] . ' ' . $student['last_name'],
-    'section'  => $student['section_name'] ?? 'N/A',
-    'time'     => date('h:i A', strtotime($now)),
-    'sms_sent' => $smsSent,
+    'success'    => true,
+    'type'       => $type,
+    'status'     => $status,
+    'student'    => $student['first_name'] . ' ' . $student['last_name'],
+    'section'    => $student['section_name'] ?? 'N/A',
+    'time'       => date('h:i A', strtotime($now)),
+    'sms_sent'   => $smsSent,
+    'email_sent' => $emailSent,
 ]);

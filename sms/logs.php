@@ -11,13 +11,11 @@ $db        = getDB();
 $page      = max(1, (int)($_GET['page'] ?? 1));
 $perPage   = 25;
 $offset    = ($page - 1) * $perPage;
-$status    = $_GET['status'] ?? '';
-$type      = $_GET['type']   ?? '';
+$type      = $_GET['type'] ?? '';
 
 $where  = ['1=1'];
 $params = [];
-if ($status) { $where[] = 'l.status = ?'; $params[] = $status; }
-if ($type)   { $where[] = 'l.type = ?';   $params[] = $type; }
+if ($type) { $where[] = 'l.type = ?'; $params[] = $type; }
 $whereSQL = implode(' AND ', $where);
 
 $total = $db->prepare("SELECT COUNT(*) FROM sms_logs l WHERE {$whereSQL}");
@@ -39,9 +37,13 @@ include '../includes/header.php';
 include '../includes/sidebar.php';
 ?>
 
+<?php showFlash(); ?>
+
 <div class="page-header">
     <div>
-        <h1 class="page-title"><i class="bi bi-chat-dots-fill me-2 text-primary"></i>SMS Logs</h1>
+        <h1 class="page-title">
+            <i class="bi bi-chat-dots-fill me-2 text-primary"></i>SMS Logs
+        </h1>
         <p class="page-subtitle">All outbound SMS notifications</p>
     </div>
 </div>
@@ -50,14 +52,6 @@ include '../includes/sidebar.php';
 <div class="card mb-3">
     <div class="card-body py-2">
         <form method="GET" class="row g-2 align-items-center">
-            <div class="col-md-3">
-                <select name="status" class="form-select form-select-sm">
-                    <option value="">All Statuses</option>
-                    <option value="sent"    <?= $status === 'sent'    ? 'selected' : '' ?>>Sent</option>
-                    <option value="failed"  <?= $status === 'failed'  ? 'selected' : '' ?>>Failed</option>
-                    <option value="pending" <?= $status === 'pending' ? 'selected' : '' ?>>Pending</option>
-                </select>
-            </div>
             <div class="col-md-3">
                 <select name="type" class="form-select form-select-sm">
                     <option value="">All Types</option>
@@ -89,13 +83,14 @@ include '../includes/sidebar.php';
                         <th>Recipient</th>
                         <th>Type</th>
                         <th>Message</th>
-                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($logs)): ?>
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4">No SMS logs found.</td>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            No SMS logs found.
+                        </td>
                     </tr>
                     <?php else: ?>
                     <?php foreach ($logs as $log): ?>
@@ -104,24 +99,24 @@ include '../includes/sidebar.php';
                             <?= date('M j, Y g:i A', strtotime($log['sent_at'])) ?>
                         </td>
                         <td class="fw-600">
-                            <?= $log['first_name'] ? sanitize($log['first_name'] . ' ' . $log['last_name']) : '—' ?>
+                            <?= $log['first_name']
+                                ? sanitize($log['first_name'] . ' ' . $log['last_name'])
+                                : '—' ?>
                         </td>
                         <td><code><?= sanitize($log['recipient_number']) ?></code></td>
                         <td>
-                            <span class="badge bg-<?= $log['type'] === 'arrival' ? 'success' : ($log['type'] === 'departure' ? 'info' : 'danger') ?> bg-opacity-75">
+                            <span class="badge bg-<?= $log['type'] === 'arrival'
+                                ? 'success'
+                                : ($log['type'] === 'departure' ? 'info' : 'danger') ?> bg-opacity-75">
                                 <?= ucfirst($log['type']) ?>
                             </span>
                         </td>
-                        <td style="max-width:300px">
-                            <small class="text-truncate d-block" style="max-width:280px"
-                                   title="<?= htmlspecialchars($log['message']) ?>">
-                                <?= htmlspecialchars(substr($log['message'], 0, 80)) ?>...
-                            </small>
-                        </td>
                         <td>
-                            <span class="status-badge <?= $log['status'] === 'sent' ? 'badge-present' : 'badge-absent' ?>">
-                                <?= ucfirst($log['status']) ?>
-                            </span>
+                            <small class="text-muted"
+                                   title="<?= htmlspecialchars($log['message']) ?>">
+                                <?= htmlspecialchars(substr($log['message'], 0, 80)) ?>
+                                <?= strlen($log['message']) > 80 ? '...' : '' ?>
+                            </small>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -132,8 +127,10 @@ include '../includes/sidebar.php';
     </div>
     <?php if ($total > $perPage): ?>
     <div class="card-footer d-flex justify-content-between align-items-center py-2">
-        <small class="text-muted">Showing <?= $offset+1 ?>–<?= min($offset+$perPage,$total) ?> of <?= $total ?></small>
-        <?= paginate($total, $perPage, $page, "logs.php?status={$status}&type={$type}") ?>
+        <small class="text-muted">
+            Showing <?= $offset + 1 ?>–<?= min($offset + $perPage, $total) ?> of <?= $total ?>
+        </small>
+        <?= paginate($total, $perPage, $page, "logs.php?type={$type}") ?>
     </div>
     <?php endif; ?>
 </div>

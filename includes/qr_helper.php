@@ -5,7 +5,7 @@
  * simplesoftwareio/simple-qrcode wraps this for Laravel,
  * so we use BaconQrCode directly for native PHP.
  */
-
+error_reporting(E_ALL & ~E_DEPRECATED);
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use BaconQrCode\Renderer\Image\ImagickImageBackEnd;
