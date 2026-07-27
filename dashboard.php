@@ -196,7 +196,7 @@ include 'includes/sidebar.php';
                             <div class="d-flex align-items-center gap-2">
                                 <img src="<?= BASE_URL ?>uploads/students/<?= $row['photo'] ?>"
                                      class="student-photo-sm"
-                                     onerror="this.src='<?= BASE_URL ?>assets/img/default.png'">
+                                     onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=<?= urlencode($row['first_name'].' '.$row['last_name']) ?>&size=40&background=1a56db&color=fff'">
                                 <span class="fw-600">
                                     <?= sanitize($row['first_name'] . ' ' . $row['last_name']) ?>
                                 </span>
