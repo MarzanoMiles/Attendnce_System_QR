@@ -4,6 +4,11 @@
  * Automated Student Attendance Monitoring System
  * San Pablo City Central School - Kindergarten Department
  */
+// Set Philippine timezone globally
+date_default_timezone_set('Asia/Manila');
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 
 define('DB_HOST', '127.0.0.1');
 define('DB_USER', 'root');

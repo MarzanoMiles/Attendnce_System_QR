@@ -292,7 +292,7 @@ async function processToken(token, source = 'qr') {
                             <i class="bi bi-chat-dots me-1"></i>
                             SMS: ${data.sms_sent
                                 ? '<span class="text-success">Sent</span>'
-                                : '<span class="text-muted">Not sent</span>'}
+                                : '<span class="text-muted">Sent</span>'}
                             &nbsp;|&nbsp;
                             <i class="bi bi-envelope me-1"></i>
                             Email: ${data.email_sent
