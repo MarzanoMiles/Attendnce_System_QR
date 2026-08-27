@@ -357,3 +357,8 @@ body {
 .shadow-sm-custom { box-shadow: var(--shadow) !important; }
 .cursor-pointer { cursor: pointer; }
 .fw-800 { font-weight: 800 !important; }
+
+/* Partial attendance badge */
+.badge-partial  { background: #fef3c7; color: #92400e; }
+.badge-holiday  { background: #e0e7ff; color: #3730a3; }
+.badge-secondary { background: #f3f4f6; color: #6b7280; }

@@ -1,14 +1,13 @@
 <?php
 /**
  * Login Page
- * Automated Student Attendance Monitoring System
+ * SPCCS Elementary Attendance System v2.0
  */
 
 session_start();
 require_once 'config/database.php';
 require_once 'includes/functions.php';
 
-// Redirect if already logged in
 if (isLoggedIn()) {
     header('Location: ' . BASE_URL . 'dashboard.php');
     exit;
@@ -16,7 +15,6 @@ if (isLoggedIn()) {
 
 $error = '';
 
-// Handle POST login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
@@ -30,7 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = $stmt->fetch();
 
         if ($user && password_verify($password, $user['password'])) {
-            // Successful login
             session_regenerate_id(true);
             $_SESSION['user_id']   = $user['id'];
             $_SESSION['username']  = $user['username'];
@@ -44,13 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$schoolName = getSetting('school_name') ?? 'San Pablo City Central School';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — SPCCS Kinder Attendance</title>
+    <title>Login — <?= htmlspecialchars($schoolName) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -59,24 +58,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
 <div class="login-page">
     <div class="login-card fade-in">
+
         <!-- Logo -->
         <div class="login-logo">
             <i class="bi bi-mortarboard-fill"></i>
         </div>
 
-        <h1 class="text-center fw-800 mb-1" style="font-size:1.3rem">Student Attendance System</h1>
-        <p class="text-center text-muted mb-4" style="font-size:0.82rem">
-            San Pablo City Central School<br>
-            <span class="badge bg-primary-custom" style="background:#ebf0ff;color:#1a56db">Kindergarten Department</span>
+        <h1 class="text-center fw-800 mb-1" style="font-size:1.25rem">
+            Student Attendance System
+        </h1>
+        <p class="text-center text-muted mb-1" style="font-size:0.85rem">
+            <?= htmlspecialchars($schoolName) ?>
+        </p>
+        <p class="text-center mb-4">
+            <span class="badge bg-primary bg-opacity-10 text-primary">
+                Elementary Department — Grades Kinder to 6
+            </span>
         </p>
 
         <?php if ($error): ?>
         <div class="alert alert-danger py-2 px-3" style="font-size:0.85rem">
-            <i class="bi bi-exclamation-circle me-1"></i><?= htmlspecialchars($error) ?>
+            <i class="bi bi-exclamation-circle me-1"></i>
+            <?= htmlspecialchars($error) ?>
         </div>
         <?php endif; ?>
 
-        <form method="POST" action="" id="loginForm" novalidate>
+        <form method="POST" novalidate>
             <div class="mb-3">
                 <label class="form-label">Username</label>
                 <div class="input-group">
@@ -105,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            placeholder="Enter password"
                            required>
                     <button type="button"
-                            class="input-group-text bg-light cursor-pointer"
+                            class="input-group-text bg-light cursor-pointer border-start-0"
                             onclick="togglePassword()">
                         <i class="bi bi-eye" id="eyeIcon"></i>
                     </button>
@@ -117,9 +124,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </button>
         </form>
 
-        <p class="text-center text-muted mt-4 mb-0" style="font-size:0.75rem">
-            Default credentials: <code>admin</code> / <code>admin123</code>
-        </p>
+        <!-- Setup note -->
+        <div class="mt-4 p-3 rounded" style="background:#f8fafc;font-size:0.78rem">
+            <div class="fw-700 mb-1 text-muted">
+                <i class="bi bi-info-circle me-1"></i>First time setup?
+            </div>
+            <ol class="mb-0 ps-3 text-muted">
+                <li>Visit <code>uppass.php</code> to set your password</li>
+                <li>Default username: <code>admin</code></li>
+                <li>Delete <code>uppass.php</code> after use</li>
+            </ol>
+        </div>
+
     </div>
 </div>
 
@@ -129,10 +145,10 @@ function togglePassword() {
     const input = document.getElementById('passwordInput');
     const icon  = document.getElementById('eyeIcon');
     if (input.type === 'password') {
-        input.type = 'text';
+        input.type    = 'text';
         icon.className = 'bi bi-eye-slash';
     } else {
-        input.type = 'password';
+        input.type    = 'password';
         icon.className = 'bi bi-eye';
     }
 }

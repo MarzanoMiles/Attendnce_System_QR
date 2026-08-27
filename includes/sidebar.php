@@ -1,11 +1,13 @@
 <?php
+
 /**
  * Sidebar Navigation
  */
 $currentFile = basename($_SERVER['PHP_SELF']);
 $currentDir  = basename(dirname($_SERVER['PHP_SELF']));
 
-function navItem($href, $icon, $label, $dir = '') {
+function navItem($href, $icon, $label, $dir = '')
+{
     global $currentDir;
     $active = ($currentDir === $dir || strpos($_SERVER['PHP_SELF'], $dir) !== false) ? 'active' : '';
     return "<li class='nav-item'>
@@ -55,30 +57,36 @@ function navItem($href, $icon, $label, $dir = '') {
 
     <!-- Navigation -->
     <ul class="nav flex-column px-2 py-2 flex-grow-1">
+
         <li class="nav-section-label">MAIN</li>
-        <?= navItem(BASE_URL . 'dashboard.php', 'speedometer2', 'Dashboard', 'dashboard') ?>
-        <?= navItem(BASE_URL . 'attendance/scanner.php', 'qr-code-scan', 'QR Scanner', 'scanner') ?>
-        <?= navItem(BASE_URL . 'attendance/index.php', 'calendar3', 'Attendance', 'attendance') ?>
+        <?= navItem(BASE_URL . 'dashboard.php',           'speedometer2',          'Dashboard',       'dashboard') ?>
+        <?= navItem(BASE_URL . 'attendance/scanner.php',  'qr-code-scan',          'QR Scanner',      'scanner') ?>
+        <?= navItem(BASE_URL . 'attendance/index.php',    'calendar3',             'Attendance',      'attendance') ?>
+        <?= navItem(BASE_URL . 'calendar/index.php',      'calendar-event',        'School Calendar', 'calendar') ?>
 
         <li class="nav-section-label mt-2">MANAGE</li>
-        <?= navItem(BASE_URL . 'students/index.php', 'people-fill', 'Students', 'students') ?>
+        <?= navItem(BASE_URL . 'students/index.php',      'people-fill',           'Students',        'students') ?>
+        <?= navItem(BASE_URL . 'attendance/manual.php',   'pencil-square',         'Manual Entry',    'manual') ?>
 
         <?php if (isAdmin()): ?>
-        <?= navItem(BASE_URL . 'reports/sf2.php', 'file-earmark-text-fill', 'SF2 Reports', 'reports') ?>
-        <?= navItem(BASE_URL . 'analytics/index.php', 'bar-chart-fill', 'Analytics', 'analytics') ?>
+            <li class="nav-section-label mt-2">REPORTS</li>
+            <?= navItem(BASE_URL . 'reports/index.php',       'file-earmark-bar-graph', 'Reports',         'reports') ?>
+            <?= navItem(BASE_URL . 'analytics/index.php',     'bar-chart-fill',        'Analytics',       'analytics') ?>
 
-        <li class="nav-section-label mt-2">ADMIN</li>
-        <?= navItem(BASE_URL . 'users/index.php', 'person-gear', 'User Management', 'users') ?>
-        <?= navItem(BASE_URL . 'sms/logs.php', 'chat-dots-fill', 'SMS Logs', 'sms') ?>
-        <?= navItem(BASE_URL . 'settings/index.php', 'gear-fill', 'Settings', 'settings') ?>
+            <li class="nav-section-label mt-2">ADMIN</li>
+            <?= navItem(BASE_URL . 'users/index.php',         'person-gear',           'Users',           'users') ?>
+            <?= navItem(BASE_URL . 'sections/index.php',      'diagram-3',             'Sections',        'sections') ?>
+            <?= navItem(BASE_URL . 'sms/logs.php',            'chat-dots-fill',        'SMS Logs',        'sms') ?>
+            <?= navItem(BASE_URL . 'settings/index.php',      'gear-fill',             'Settings',        'settings') ?>
         <?php endif; ?>
+
     </ul>
 
     <!-- Logout -->
     <div class="px-3 py-3 mt-auto">
         <a href="<?= BASE_URL ?>logout.php"
-           class="btn btn-outline-danger btn-sm w-100"
-           onclick="return confirm('Are you sure you want to logout?')">
+            class="btn btn-outline-danger btn-sm w-100"
+            onclick="return confirm('Are you sure you want to logout?')">
             <i class="bi bi-box-arrow-right me-1"></i> Logout
         </a>
     </div>
