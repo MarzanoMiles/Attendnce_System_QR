@@ -519,3 +519,15 @@ function sessionStatusBadge(?string $status): string {
         default   => '<span class="text-muted small">—</span>',
     };
 }
+
+// ─── Calendar helpers ─────────────────────────────────────────
+
+function entryColor(string $type): string {
+    return match($type) {
+        'holiday'       => 'danger',
+        'no_class'      => 'warning',
+        'special_event' => 'info',
+        'school_day'    => 'success',
+        default         => 'secondary',
+    };
+}
