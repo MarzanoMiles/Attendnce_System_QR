@@ -58,15 +58,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Load students for section
 $students = $db->prepare("
     SELECT s.*,
-           (SELECT id FROM attendance WHERE student_id = s.id AND date = ?) AS att_id,
-           (SELECT status FROM attendance WHERE student_id = s.id AND date = ?) AS att_status,
-           (SELECT time_in FROM attendance WHERE student_id = s.id AND date = ?) AS att_time_in,
-           (SELECT remarks FROM attendance WHERE student_id = s.id AND date = ?) AS att_remarks
+           a.id              AS att_id,
+           a.am_in, a.am_out, a.am_status,
+           a.pm_in, a.pm_out, a.pm_status,
+           a.attendance_type, a.remarks
     FROM students s
+    LEFT JOIN attendance a ON a.student_id = s.id AND a.date = ?
     WHERE s.section_id = ? AND s.is_active = 1
     ORDER BY s.last_name, s.first_name
 ");
-$students->execute([$date, $date, $date, $date, $sectionId]);
+$students->execute([$date, $sectionId]);
 $students = $students->fetchAll();
 
 include '../includes/header.php';

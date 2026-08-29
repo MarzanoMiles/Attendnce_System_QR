@@ -42,7 +42,7 @@ $total = $countStmt->fetchColumn();
 // Data
 $stmt = $db->prepare("
     SELECT s.*, sec.section_name,
-           (SELECT status FROM attendance WHERE student_id = s.id AND date = CURDATE() LIMIT 1) AS today_status
+           (SELECT attendance_type FROM attendance WHERE student_id = s.id AND date = CURDATE() LIMIT 1) AS today_status
     FROM students s
     LEFT JOIN sections sec ON s.section_id = sec.id
     {$whereSQL}
