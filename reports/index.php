@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Reports Hub
  */
@@ -79,38 +80,53 @@ include '../includes/sidebar.php';
             'color' => 'success',
             'link'  => 'am_pm.php',
         ],
+        [
+            'title' => 'SF2 Daily Attendance',
+            'desc'  => 'DepEd School Form 2 Daily Attendance Record per section.',
+            'icon'  => 'file-earmark-ruled',
+            'color' => 'danger',
+            'link'  => 'sf2.php',
+        ],
+        [
+            'title' => 'SF4 Monthly Summary',
+            'desc'  => 'DepEd School Form 4 Monthly Attendance Report for the whole school.',
+            'icon'  => 'file-earmark-bar-graph',
+            'color' => 'warning',
+            'link'  => 'sf4.php',
+        ],
     ];
     foreach ($reports as $r):
     ?>
-    <div class="col-md-6 col-lg-3">
-        <a href="<?= $r['link'] ?>" class="text-decoration-none">
-            <div class="card h-100 report-card border-<?= $r['color'] ?>">
-                <div class="card-body text-center py-4">
-                    <div class="mb-3">
-                        <span class="rounded-circle d-inline-flex align-items-center justify-content-center
+        <div class="col-md-6 col-lg-3">
+            <a href="<?= $r['link'] ?>" class="text-decoration-none">
+                <div class="card h-100 report-card border-<?= $r['color'] ?>">
+                    <div class="card-body text-center py-4">
+                        <div class="mb-3">
+                            <span class="rounded-circle d-inline-flex align-items-center justify-content-center
                                      bg-<?= $r['color'] ?> bg-opacity-10 text-<?= $r['color'] ?>"
-                              style="width:56px;height:56px;font-size:1.5rem">
-                            <i class="bi bi-<?= $r['icon'] ?>"></i>
-                        </span>
+                                style="width:56px;height:56px;font-size:1.5rem">
+                                <i class="bi bi-<?= $r['icon'] ?>"></i>
+                            </span>
+                        </div>
+                        <h6 class="fw-700 mb-1"><?= $r['title'] ?></h6>
+                        <p class="text-muted small mb-0"><?= $r['desc'] ?></p>
                     </div>
-                    <h6 class="fw-700 mb-1"><?= $r['title'] ?></h6>
-                    <p class="text-muted small mb-0"><?= $r['desc'] ?></p>
                 </div>
-            </div>
-        </a>
-    </div>
+            </a>
+        </div>
     <?php endforeach; ?>
 </div>
 
 <style>
-.report-card {
-    border-top-width: 3px !important;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-.report-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
-}
+    .report-card {
+        border-top-width: 3px !important;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .report-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+    }
 </style>
 
 <?php include '../includes/footer.php'; ?>

@@ -1,29 +1,37 @@
 <?php
 /**
- * SF2 Report Generator
- * DepEd School Form 2 — Daily Attendance Record
+ * DepEd School Form 2 (SF2)
+ * Daily Attendance Record — Official Format
+ * Covers Kinder to Grade 6
  */
+error_reporting(E_ALL & ~E_DEPRECATED);
+ini_set('display_errors', 0);
+
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 requireLogin();
 
-$pageTitle = 'SF2 Reports';
-$db        = getDB();
+$pageTitle       = 'SF2 — Daily Attendance Record';
+$db              = getDB();
+$month           = (int)($_GET['month']   ?? date('n'));
+$year            = (int)($_GET['year']    ?? date('Y'));
+$sectionId       = (int)($_GET['section'] ?? 0);
+$allowedSections = getAllowedSections();
+$grades          = getGradeLevels();
 
-$month     = (int)($_GET['month']   ?? date('n'));
-$year      = (int)($_GET['year']    ?? date('Y'));
-$sectionId = (int)($_GET['section'] ?? 0);
-$sections  = $db->query("SELECT * FROM sections WHERE is_active = 1 ORDER BY section_name")->fetchAll();
-
-if ($sectionId === 0 && !empty($sections)) {
-    $sectionId = $sections[0]['id'];
+// Default to first allowed section
+if ($sectionId === 0 && !empty($allowedSections)) {
+    $sectionId = $allowedSections[0]['id'];
 }
 
-// Calculate month days
-$daysInMonth  = cal_days_in_month(CAL_GREGORIAN, $month, $year);
-$monthLabel   = date('F Y', mktime(0,0,0,$month,1,$year));
+$section     = getSection($sectionId);
+$daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+$monthLabel  = date('F Y', mktime(0,0,0,$month,1,$year));
+$schoolName  = getSetting('school_name')  ?? 'San Pablo City Central School';
+$schoolYear  = getSetting('school_year')  ?? '';
+$calEntries  = getCalendarMonth($month, $year);
 
-// Get students for section
+// Students for this section
 $students = $db->prepare("
     SELECT * FROM students
     WHERE section_id = ? AND is_active = 1
@@ -32,10 +40,13 @@ $students = $db->prepare("
 $students->execute([$sectionId]);
 $students = $students->fetchAll();
 
-// Build attendance matrix [student_id][day] => status
+// Attendance matrix [student_id][day] => record
 $attMatrix = [];
 $stmt = $db->prepare("
-    SELECT student_id, DAY(date) AS day, status
+    SELECT student_id, DAY(date) AS day,
+           am_in, am_out, am_status,
+           pm_in, pm_out, pm_status,
+           attendance_type
     FROM attendance
     WHERE MONTH(date) = ? AND YEAR(date) = ?
     AND student_id IN (
@@ -44,43 +55,43 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$month, $year, $sectionId]);
 foreach ($stmt->fetchAll() as $row) {
-    $attMatrix[$row['student_id']][$row['day']] = $row['status'];
+    $attMatrix[$row['student_id']][$row['day']] = $row;
 }
 
-// Get school/section info
-$schoolName = getSetting('school_name');
-$schoolYear = getSetting('school_year');
-$selectedSection = '';
-foreach ($sections as $s) {
-    if ($s['id'] == $sectionId) {
-        $selectedSection = $s['section_name'];
-        break;
-    }
+// Count school days
+$schoolDays = 0;
+for ($d = 1; $d <= $daysInMonth; $d++) {
+    $ds  = sprintf('%04d-%02d-%02d', $year, $month, $d);
+    $dow = (int)date('N', mktime(0,0,0,$month,$d,$year));
+    if (!in_array($dow,[6,7]) && !isHolidayOrNoClass($ds)) $schoolDays++;
 }
+
+$isAmOnly = ($section['schedule_type'] ?? 'full_day') === 'am_only';
+$isPmOnly = ($section['schedule_type'] ?? 'full_day') === 'pm_only';
 
 include '../includes/header.php';
 include '../includes/sidebar.php';
 ?>
 
-<?php showFlash(); ?>
-
 <div class="page-header no-print">
     <div>
-        <h1 class="page-title"><i class="bi bi-file-earmark-text-fill me-2 text-primary"></i>SF2 Reports</h1>
-        <p class="page-subtitle">DepEd School Form 2 — Daily Attendance</p>
+        <h1 class="page-title">
+            <i class="bi bi-file-earmark-text-fill me-2 text-primary"></i>
+            SF2 — Daily Attendance Record
+        </h1>
+        <p class="page-subtitle">DepEd Official Format</p>
     </div>
     <div class="d-flex gap-2">
-        <a href="export_pdf.php?month=<?= $month ?>&year=<?= $year ?>&section=<?= $sectionId ?>"
-           class="btn btn-danger" target="_blank">
-            <i class="bi bi-file-earmark-pdf me-1"></i>Export PDF
-        </a>
-        <a href="export_excel.php?month=<?= $month ?>&year=<?= $year ?>&section=<?= $sectionId ?>"
-           class="btn btn-success">
-            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-        </a>
-        <button onclick="window.print()" class="btn btn-outline-secondary">
-            <i class="bi bi-printer me-1"></i>Print
+        <button onclick="window.print()" class="btn btn-success btn-sm">
+            <i class="bi bi-printer me-1"></i>Print / Save PDF
         </button>
+        <a href="sf2_excel.php?month=<?= $month ?>&year=<?= $year ?>&section=<?= $sectionId ?>"
+           class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel
+        </a>
+        <a href="index.php" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i>Back
+        </a>
     </div>
 </div>
 
@@ -88,12 +99,12 @@ include '../includes/sidebar.php';
 <div class="card mb-3 no-print">
     <div class="card-body py-2">
         <form method="GET" class="row g-2 align-items-end">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label mb-1 small fw-600">Month</label>
                 <select name="month" class="form-select form-select-sm">
-                    <?php for ($m = 1; $m <= 12; $m++): ?>
-                    <option value="<?= $m ?>" <?= $m == $month ? 'selected' : '' ?>>
-                        <?= date('F', mktime(0,0,0,$m,1)) ?>
+                    <?php for($m=1;$m<=12;$m++): ?>
+                    <option value="<?=$m?>" <?=$m==$month?'selected':''?>>
+                        <?= date('F',mktime(0,0,0,$m,1)) ?>
                     </option>
                     <?php endfor; ?>
                 </select>
@@ -101,17 +112,18 @@ include '../includes/sidebar.php';
             <div class="col-md-2">
                 <label class="form-label mb-1 small fw-600">Year</label>
                 <select name="year" class="form-select form-select-sm">
-                    <?php for ($y = 2024; $y <= date('Y') + 1; $y++): ?>
-                    <option value="<?= $y ?>" <?= $y == $year ? 'selected' : '' ?>><?= $y ?></option>
+                    <?php for($y=2024;$y<=date('Y')+1;$y++): ?>
+                    <option value="<?=$y?>" <?=$y==$year?'selected':''?>><?=$y?></option>
                     <?php endfor; ?>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label class="form-label mb-1 small fw-600">Section</label>
                 <select name="section" class="form-select form-select-sm">
-                    <?php foreach ($sections as $sec): ?>
-                    <option value="<?= $sec['id'] ?>" <?= $sectionId == $sec['id'] ? 'selected' : '' ?>>
-                        <?= sanitize($sec['section_name']) ?>
+                    <?php foreach ($allowedSections as $s): ?>
+                    <option value="<?= $s['id'] ?>"
+                            <?= $sectionId == $s['id'] ? 'selected' : '' ?>>
+                        <?= sanitize($s['grade_level'].' — '.$s['section_name']) ?>
                     </option>
                     <?php endforeach; ?>
                 </select>
@@ -123,139 +135,257 @@ include '../includes/sidebar.php';
     </div>
 </div>
 
-<!-- SF2 Table -->
+<!-- SF2 Document -->
 <div class="card">
-    <div class="card-body p-2 p-md-3">
-        <!-- Header -->
+    <div class="card-body p-3" id="sf2Document">
+
+        <!-- DepEd Header -->
+        <div class="text-center mb-2" style="font-size:0.82rem">
+            <div style="font-size:0.75rem">Republic of the Philippines</div>
+            <div class="fw-700" style="font-size:0.9rem">Department of Education</div>
+            <div class="fw-700"><?= sanitize($schoolName) ?></div>
+            <div><?= sanitize($section['grade_level'] ?? '') ?> — <?= sanitize($section['section_name'] ?? '') ?></div>
+        </div>
+
         <div class="text-center mb-3">
-            <h5 class="fw-800 mb-0">Republic of the Philippines</h5>
-            <h6 class="mb-0">Department of Education</h6>
-            <h6 class="mb-0"><?= sanitize($schoolName) ?></h6>
-            <h6 class="mb-0">Kindergarten Department — <?= sanitize($selectedSection) ?></h6>
-            <div class="mt-2">
-                <strong>SCHOOL FORM 2 (SF2) — DAILY ATTENDANCE RECORD</strong>
+            <div class="fw-800 border-top border-bottom py-1" style="font-size:0.9rem">
+                SCHOOL FORM 2 (SF2) — DAILY ATTENDANCE RECORD OF LEARNERS
             </div>
-            <div><?= $monthLabel ?> &nbsp;|&nbsp; S.Y. <?= $schoolYear ?></div>
+            <div style="font-size:0.82rem">
+                Month/Year: <strong><?= $monthLabel ?></strong>
+                &nbsp;|&nbsp; School Year: <strong><?= $schoolYear ?></strong>
+                &nbsp;|&nbsp; School Days: <strong><?= $schoolDays ?></strong>
+                &nbsp;|&nbsp; Schedule:
+                <strong><?= ucfirst(str_replace('_',' ',$section['schedule_type'] ?? 'full_day')) ?></strong>
+            </div>
         </div>
 
         <!-- Legend -->
-        <div class="d-flex gap-3 mb-2 flex-wrap no-print" style="font-size:0.8rem">
-            <span><strong>P</strong> = Present</span>
-            <span><strong>L</strong> = Late</span>
-            <span><strong>A</strong> = Absent</span>
-            <span><strong>E</strong> = Excused</span>
+        <div class="d-flex gap-4 mb-2 no-print flex-wrap" style="font-size:0.75rem">
+            <span>✅ <strong>P</strong> = Present</span>
+            <span>⏰ <strong>L</strong> = Late</span>
+            <span>❌ <strong>A</strong> = Absent</span>
+            <span>🔵 <strong>E</strong> = Excused</span>
+            <span>🔘 <strong>/</strong> = Weekend/Holiday</span>
         </div>
 
-        <div class="table-responsive" style="overflow-x:auto">
-            <table class="table table-bordered table-sm sf2-table" style="font-size:0.75rem;min-width:900px">
+        <!-- SF2 Table -->
+        <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:0.68rem;min-width:900px">
                 <thead>
-                    <tr class="bg-light">
-                        <th rowspan="2" style="width:30px">#</th>
-                        <th rowspan="2" style="min-width:150px">Student Name</th>
-                        <?php
-                        // Day headers
-                        for ($d = 1; $d <= $daysInMonth; $d++):
+                    <tr>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;width:25px;text-align:center">#</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;min-width:140px">
+                            Name of Learner<br>(Last Name, First Name, M.I.)
+                        </th>
+                        <?php for ($d = 1; $d <= $daysInMonth; $d++):
                             $dayOfWeek = date('N', mktime(0,0,0,$month,$d,$year));
                             $isWeekend = in_array($dayOfWeek, [6,7]);
+                            $ds        = sprintf('%04d-%02d-%02d', $year, $month, $d);
+                            $calEntry  = $calEntries[$ds] ?? null;
+                            $isHol     = $calEntry && in_array($calEntry['type'], ['holiday','no_class']);
+                            $bgStyle   = ($isWeekend || $isHol) ? 'background:#d0d0d0' : '';
                         ?>
-                        <th class="text-center <?= $isWeekend ? 'bg-secondary text-white' : '' ?>"
-                            style="width:28px">
+                        <th style="border:1px solid #000;padding:2px;text-align:center;width:<?= $isAmOnly || $isPmOnly ? '20px' : '38px' ?>;<?= $bgStyle ?>">
                             <?= $d ?>
                         </th>
                         <?php endfor; ?>
-                        <th class="text-center bg-light" style="width:40px">P</th>
-                        <th class="text-center bg-light" style="width:40px">L</th>
-                        <th class="text-center bg-light" style="width:40px">A</th>
-                        <th class="text-center bg-light" style="width:40px">E</th>
+                        <?php if (!$isAmOnly && !$isPmOnly): ?>
+                        <!-- Full day summary columns -->
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px;background:#f0fdf4">AM<br>P</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px;background:#f0fdf4">AM<br>L</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px;background:#f0fdf4">AM<br>A</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px;background:#eff6ff">PM<br>P</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px;background:#eff6ff">PM<br>L</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px;background:#eff6ff">PM<br>A</th>
+                        <?php else: ?>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px">P</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px">L</th>
+                        <th rowspan="2" style="border:1px solid #000;padding:3px;text-align:center;width:30px">A</th>
+                        <?php endif; ?>
                     </tr>
-                    <tr class="bg-light">
-                        <th colspan="2" style="font-size:0.65rem;text-align:center">
-                            <em>Day of week</em>
-                        </th>
-                        <?php for ($d = 3; $d <= $daysInMonth; $d++):
-                            $dayAbbr = date('D', mktime(0,0,0,$month,$d,$year));
+                    <tr>
+                        <?php for ($d = 1; $d <= $daysInMonth; $d++):
+                            $dayOfWeek = date('N', mktime(0,0,0,$month,$d,$year));
+                            $isWeekend = in_array($dayOfWeek, [6,7]);
+                            $ds        = sprintf('%04d-%02d-%02d', $year, $month, $d);
+                            $calEntry  = $calEntries[$ds] ?? null;
+                            $isHol     = $calEntry && in_array($calEntry['type'], ['holiday','no_class']);
+                            $bgStyle   = ($isWeekend || $isHol) ? 'background:#d0d0d0' : '';
+                            $dayAbbr   = strtoupper(substr(date('D', mktime(0,0,0,$month,$d,$year)), 0, 1));
                         ?>
-                        <th class="text-center" style="font-size:0.6rem"><?= substr($dayAbbr,0,1) ?></th>
+                        <th style="border:1px solid #000;padding:1px;text-align:center;font-size:0.6rem;<?= $bgStyle ?>">
+                            <?= $isHol ? '☆' : $dayAbbr ?>
+                        </th>
                         <?php endfor; ?>
-                        <th colspan="4"></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php
-                    $totalsP = $totalsL = $totalsA = $totalsE = 0;
+                    $totAMP = $totAML = $totAMA = 0;
+                    $totPMP = $totPML = $totPMA = 0;
+
                     foreach ($students as $idx => $stu):
-                        $p = $l = $a = $e = 0;
+                        $amP = $amL = $amA = 0;
+                        $pmP = $pmL = $pmA = 0;
                     ?>
                     <tr>
-                        <td class="text-center"><?= $idx + 1 ?></td>
-                        <td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center">
+                            <?= $idx + 1 ?>
+                        </td>
+                        <td style="border:1px solid #000;padding:2px">
                             <strong><?= sanitize($stu['last_name']) ?></strong>,
                             <?= sanitize($stu['first_name']) ?>
-                            <?= $stu['middle_name'] ? sanitize(substr($stu['middle_name'],0,1)) . '.' : '' ?>
+                            <?= $stu['middle_name'] ? sanitize(substr($stu['middle_name'],0,1)).'.' : '' ?>
                         </td>
                         <?php for ($d = 1; $d <= $daysInMonth; $d++):
                             $dayOfWeek = date('N', mktime(0,0,0,$month,$d,$year));
                             $isWeekend = in_array($dayOfWeek, [6,7]);
-                            $stat      = $attMatrix[$stu['id']][$d] ?? null;
-                            $cellClass = '';
-                            $cellVal   = '';
-                            if ($isWeekend) {
-                                $cellClass = 'bg-secondary text-white';
-                                $cellVal   = '—';
-                            } elseif ($stat === 'present') { $cellVal = 'P'; $p++; }
-                            elseif ($stat === 'late')     { $cellVal = 'L'; $l++; }
-                            elseif ($stat === 'absent')   { $cellVal = 'A'; $a++; }
-                            elseif ($stat === 'excused')  { $cellVal = 'E'; $e++; }
-                        ?>
-                        <td class="text-center <?= $cellClass ?>">
-                            <?php if (!$isWeekend && $stat): ?>
-                            <span class="<?= $stat === 'absent' ? 'text-danger fw-bold' : ($stat === 'late' ? 'text-warning fw-bold' : '') ?>">
-                                <?= $cellVal ?>
-                            </span>
-                            <?php else: ?>
-                            <?= $cellVal ?>
-                            <?php endif; ?>
+                            $ds        = sprintf('%04d-%02d-%02d', $year, $month, $d);
+                            $calEntry  = $calEntries[$ds] ?? null;
+                            $isHol     = $calEntry && in_array($calEntry['type'],['holiday','no_class']);
+                            $rec       = $attMatrix[$stu['id']][$d] ?? null;
+
+                            $bgStyle   = ($isWeekend || $isHol) ? 'background:#d0d0d0' : '';
+                            $cellStyle = "border:1px solid #000;padding:1px;text-align:center;{$bgStyle}";
+
+                            if ($isWeekend || $isHol):
+                                echo "<td style=\"{$cellStyle}\">/ </td>";
+                            elseif ($isAmOnly):
+                                $val = '';
+                                if ($rec) {
+                                    $val = match($rec['am_status']) {
+                                        'present' => 'P', 'late' => 'L', 'absent' => 'A', default => ''
+                                    };
+                                    if ($rec['am_status'] === 'present') $amP++;
+                                    elseif ($rec['am_status'] === 'late') $amL++;
+                                    elseif ($rec['am_status'] === 'absent') $amA++;
+                                }
+                                $color = $val === 'A' ? 'color:red' : ($val === 'L' ? 'color:orange' : '');
+                                echo "<td style=\"{$cellStyle}\"><span style=\"{$color}\">{$val}</span></td>";
+                            elseif ($isPmOnly):
+                                $val = '';
+                                if ($rec) {
+                                    $val = match($rec['pm_status']) {
+                                        'present' => 'P', 'late' => 'L', 'absent' => 'A', default => ''
+                                    };
+                                    if ($rec['pm_status'] === 'present') $pmP++;
+                                    elseif ($rec['pm_status'] === 'late') $pmL++;
+                                    elseif ($rec['pm_status'] === 'absent') $pmA++;
+                                }
+                                $color = $val === 'A' ? 'color:red' : ($val === 'L' ? 'color:orange' : '');
+                                echo "<td style=\"{$cellStyle}\"><span style=\"{$color}\">{$val}</span></td>";
+                            else:
+                                // Full day — show AM/PM stacked
+                                $amVal = $pmVal = '';
+                                if ($rec) {
+                                    $amVal = match($rec['am_status'] ?? '') {
+                                        'present' => 'P', 'late' => 'L', 'absent' => 'A', default => ''
+                                    };
+                                    $pmVal = match($rec['pm_status'] ?? '') {
+                                        'present' => 'P', 'late' => 'L', 'absent' => 'A', default => ''
+                                    };
+                                    if ($rec['am_status'] === 'present') $amP++;
+                                    elseif ($rec['am_status'] === 'late') $amL++;
+                                    elseif ($rec['am_status'] === 'absent') $amA++;
+                                    if ($rec['pm_status'] === 'present') $pmP++;
+                                    elseif ($rec['pm_status'] === 'late') $pmL++;
+                                    elseif ($rec['pm_status'] === 'absent') $pmA++;
+                                }
+                                $amColor = $amVal === 'A' ? 'color:red' : ($amVal === 'L' ? 'color:orange' : '');
+                                $pmColor = $pmVal === 'A' ? 'color:red' : ($pmVal === 'L' ? 'color:orange' : '');
+                                echo "<td style=\"{$cellStyle};font-size:0.58rem\">
+                                    <div style=\"border-bottom:0.5px solid #ccc;{$amColor}\">{$amVal}</div>
+                                    <div style=\"{$pmColor}\">{$pmVal}</div>
+                                </td>";
+                            endif;
+                        endfor; ?>
+
+                        <?php if (!$isAmOnly && !$isPmOnly): ?>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#f0fdf4">
+                            <?= $amP ?>
                         </td>
-                        <?php endfor; ?>
-                        <td class="text-center fw-bold text-success"><?= $p ?></td>
-                        <td class="text-center fw-bold text-warning"><?= $l ?></td>
-                        <td class="text-center fw-bold text-danger"><?= $a ?></td>
-                        <td class="text-center fw-bold text-info"><?= $e ?></td>
-                        <?php $totalsP += $p; $totalsL += $l; $totalsA += $a; $totalsE += $e; ?>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#f0fdf4;color:orange">
+                            <?= $amL ?>
+                        </td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#f0fdf4;color:red">
+                            <?= $amA ?>
+                        </td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#eff6ff">
+                            <?= $pmP ?>
+                        </td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#eff6ff;color:orange">
+                            <?= $pmL ?>
+                        </td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#eff6ff;color:red">
+                            <?= $pmA ?>
+                        </td>
+                        <?php else: ?>
+                        <td style="border:1px solid #000;padding:2px;text-align:center"><?= $isAmOnly ? $amP : $pmP ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;color:orange"><?= $isAmOnly ? $amL : $pmL ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;color:red"><?= $isAmOnly ? $amA : $pmA ?></td>
+                        <?php endif; ?>
+
+                        <?php
+                        $totAMP += $amP; $totAML += $amL; $totAMA += $amA;
+                        $totPMP += $pmP; $totPML += $pmL; $totPMA += $pmA;
+                        ?>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot>
-                    <tr class="bg-light fw-bold">
-                        <td colspan="2" class="text-end">TOTAL</td>
+                    <tr style="background:#f5f5f5;font-weight:bold">
+                        <td colspan="2" style="border:1px solid #000;padding:3px;text-align:right">
+                            TOTAL
+                        </td>
                         <?php for ($d = 1; $d <= $daysInMonth; $d++): ?>
-                        <td></td>
+                        <td style="border:1px solid #000;padding:2px"></td>
                         <?php endfor; ?>
-                        <td class="text-center text-success"><?= $totalsP ?></td>
-                        <td class="text-center text-warning"><?= $totalsL ?></td>
-                        <td class="text-center text-danger"><?= $totalsA ?></td>
-                        <td class="text-center text-info"><?= $totalsE ?></td>
+                        <?php if (!$isAmOnly && !$isPmOnly): ?>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#f0fdf4"><?= $totAMP ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#f0fdf4;color:orange"><?= $totAML ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#f0fdf4;color:red"><?= $totAMA ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#eff6ff"><?= $totPMP ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#eff6ff;color:orange"><?= $totPML ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;background:#eff6ff;color:red"><?= $totPMA ?></td>
+                        <?php else: ?>
+                        <td style="border:1px solid #000;padding:2px;text-align:center"><?= $isAmOnly ? $totAMP : $totPMP ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;color:orange"><?= $isAmOnly ? $totAML : $totPML ?></td>
+                        <td style="border:1px solid #000;padding:2px;text-align:center;color:red"><?= $isAmOnly ? $totAMA : $totPMA ?></td>
+                        <?php endif; ?>
                     </tr>
                 </tfoot>
             </table>
         </div>
 
-        <!-- Signature block -->
+        <!-- Signature Block -->
         <div class="row mt-4">
-            <div class="col-md-6">
-                <div class="border-top pt-2 mt-5 text-center" style="width:250px">
-                    <div class="fw-600">Class Adviser</div>
-                    <small class="text-muted"><?= sanitize($selectedSection) ?></small>
+            <div class="col-6">
+                <div class="mt-5 border-top pt-1 text-center" style="width:220px;font-size:0.8rem">
+                    <strong><?= sanitize($section['adviser_name'] ?? '___________________') ?></strong>
+                    <div class="text-muted">Class Adviser</div>
                 </div>
             </div>
-            <div class="col-md-6 text-end">
-                <div class="border-top pt-2 mt-5 text-center ms-auto" style="width:250px">
-                    <div class="fw-600">School Principal</div>
-                    <small class="text-muted"><?= sanitize($schoolName) ?></small>
+            <div class="col-6 text-end">
+                <div class="mt-5 border-top pt-1 text-center ms-auto" style="width:220px;font-size:0.8rem">
+                    <strong>___________________</strong>
+                    <div class="text-muted">School Head / Principal</div>
                 </div>
             </div>
         </div>
+
     </div>
 </div>
+
+<style>
+@media print {
+    .no-print, .sidebar, .top-navbar, .page-header { display: none !important; }
+    .main-content { margin: 0 !important; }
+    .content-area { padding: 0 !important; }
+    .card { border: none !important; box-shadow: none !important; }
+    body { font-size: 9px; }
+    #sf2Document { padding: 0 !important; }
+}
+</style>
 
 <?php include '../includes/footer.php'; ?>
