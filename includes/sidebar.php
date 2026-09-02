@@ -71,8 +71,6 @@ function navItem($href, $icon, $label, $dir = '')
         <?php if (isAdmin()): ?>
             <li class="nav-section-label mt-2">REPORTS</li>
             <?= navItem(BASE_URL . 'reports/index.php',       'file-earmark-bar-graph', 'Reports',         'reports') ?>
-            <?= navItem(BASE_URL . 'analytics/index.php',     'bar-chart-fill',        'Analytics',       'analytics') ?>
-            <?= navItem(BASE_URL . 'reports/index.php',       'file-earmark-bar-graph', 'Reports',         'reports') ?>
             <?= navItem(BASE_URL . 'reports/sf2.php',         'file-earmark-ruled',    'SF2 Report',      'sf2') ?>
             <?= navItem(BASE_URL . 'reports/sf4.php',         'file-earmark-bar-graph', 'SF4 Report',      'sf4') ?>
             <?= navItem(BASE_URL . 'analytics/index.php',     'bar-chart-fill',        'Analytics',       'analytics') ?>
