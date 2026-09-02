@@ -4,17 +4,33 @@ require_once '../includes/functions.php';
 requireAdmin();
 
 $id = (int)($_GET['id'] ?? 0);
-$db = getDB();
 
-$stmt = $db->prepare("SELECT * FROM sections WHERE id = ?");
+if ($id <= 0) {
+    setFlash('danger', 'Invalid section ID.');
+    header('Location: index.php');
+    exit;
+}
+
+$db   = getDB();
+$stmt = $db->prepare("SELECT * FROM sections WHERE id = ? AND is_active = 1");
 $stmt->execute([$id]);
 $section = $stmt->fetch();
 
 if (!$section) {
     setFlash('danger', 'Section not found.');
 } else {
-    $db->prepare("UPDATE sections SET is_active = 0 WHERE id = ?")->execute([$id]);
-    setFlash('success', "Section '{$section['section_name']}' deleted.");
+    // Check if section has students
+    $stuCount = $db->prepare("SELECT COUNT(*) FROM students WHERE section_id = ? AND is_active = 1");
+    $stuCount->execute([$id]);
+    $count = $stuCount->fetchColumn();
+
+    if ($count > 0) {
+        setFlash('danger', "Cannot delete — this section has {$count} active student(s). Reassign them first.");
+    } else {
+        $db->prepare("UPDATE sections SET is_active = 0 WHERE id = ?")
+           ->execute([$id]);
+        setFlash('success', "Section '{$section['section_name']}' deleted.");
+    }
 }
 
 header('Location: index.php');

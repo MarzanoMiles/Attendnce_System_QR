@@ -1,4 +1,5 @@
 <?php
+
 /**
  * QR Scanner — 4-event attendance system
  * AM IN → AM OUT → PM IN → PM OUT
@@ -22,19 +23,19 @@ include '../includes/sidebar.php';
 ?>
 
 <?php if ($isHoliday): ?>
-<div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
-    <i class="bi bi-calendar-x fs-4"></i>
-    <div>
-        <strong>
-            <?= $calendarEntry['type'] === 'holiday' ? '🎉 Holiday' : '📢 No Class Today' ?>:
-            <?= sanitize($calendarEntry['title']) ?>
-        </strong>
-        <?php if ($calendarEntry['description']): ?>
-        — <?= sanitize($calendarEntry['description']) ?>
-        <?php endif; ?>
-        <div class="small">Attendance scanning is disabled on this day.</div>
+    <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+        <i class="bi bi-calendar-x fs-4"></i>
+        <div>
+            <strong>
+                <?= $calendarEntry['type'] === 'holiday' ? '🎉 Holiday' : '📢 No Class Today' ?>:
+                <?= sanitize($calendarEntry['title']) ?>
+            </strong>
+            <?php if ($calendarEntry['description']): ?>
+                — <?= sanitize($calendarEntry['description']) ?>
+            <?php endif; ?>
+            <div class="small">Attendance scanning is disabled on this day.</div>
+        </div>
     </div>
-</div>
 <?php endif; ?>
 
 <div class="page-header">
@@ -61,10 +62,10 @@ include '../includes/sidebar.php';
                 <span><i class="bi bi-camera-video me-2"></i>Camera</span>
                 <div class="d-flex gap-2 align-items-center">
                     <select id="cameraSelect" class="form-select form-select-sm d-none"
-                            style="width:auto;max-width:160px"></select>
+                        style="width:auto;max-width:160px"></select>
                     <span class="badge bg-secondary" id="scannerStatus">Stopped</span>
                     <button class="btn btn-sm btn-primary" id="startBtn" onclick="startScanner()"
-                            <?= $isHoliday ? 'disabled' : '' ?>>
+                        <?= $isHoliday ? 'disabled' : '' ?>>
                         <i class="bi bi-play-fill me-1"></i>Start
                     </button>
                     <button class="btn btn-sm btn-danger d-none" id="stopBtn" onclick="stopScanner()">
@@ -83,11 +84,11 @@ include '../includes/sidebar.php';
                             <i class="bi bi-upc-scan"></i>
                         </span>
                         <input type="text" id="manualInput" class="form-control"
-                               placeholder="Scan barcode or type QR token..."
-                               autocomplete="off" autocorrect="off" spellcheck="false"
-                               <?= $isHoliday ? 'disabled' : '' ?>>
+                            placeholder="Scan barcode or type QR token..."
+                            autocomplete="off" autocorrect="off" spellcheck="false"
+                            <?= $isHoliday ? 'disabled' : '' ?>>
                         <button class="btn btn-primary" onclick="submitManual()"
-                                <?= $isHoliday ? 'disabled' : '' ?>>
+                            <?= $isHoliday ? 'disabled' : '' ?>>
                             <i class="bi bi-check-lg me-1"></i>Record
                         </button>
                     </div>
@@ -140,7 +141,7 @@ include '../includes/sidebar.php';
             <div class="card-body" id="resultArea">
                 <div class="text-center text-muted py-3">
                     <i class="bi bi-qr-code-scan d-block mb-2"
-                       style="font-size:2.5rem;opacity:0.2"></i>
+                        style="font-size:2.5rem;opacity:0.2"></i>
                     Start scanner and scan a student QR code
                 </div>
             </div>
@@ -462,6 +463,17 @@ function beep(success) {
 // ── Init ─────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+   
+    // Keep manual input focused when not using camera
+    const manualInput = document.getElementById('manualInput');
+
+    // Auto-focus on page load
+    manualInput.focus();
+
+    // Re-focus after each scan result
+    // Add this inside processToken() after showing result:
+    setTimeout(() => manualInput.focus(), 500);
+    
     refreshLog();
     setInterval(refreshLog, 30000);
 
