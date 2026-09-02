@@ -1,10 +1,11 @@
 <?php
 /**
- * Attendance Management
+ * Attendance Management — v2
  * Daily table with AM/PM 4-event display
- * Supports grade level and section filtering
- * Teacher sees only assigned sections
  */
+error_reporting(E_ALL & ~E_DEPRECATED);
+ini_set('display_errors', 0);
+
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 requireLogin();
@@ -14,52 +15,54 @@ $db        = getDB();
 $today     = date('Y-m-d');
 
 // Filters
-$date        = $_GET['date']       ?? $today;
-$gradeLevel  = $_GET['grade']      ?? '';
-$sectionId   = (int)($_GET['section'] ?? 0);
-$typeFilter  = $_GET['type']       ?? '';
-$page        = max(1, (int)($_GET['page'] ?? 1));
-$perPage     = 25;
-$offset      = ($page - 1) * $perPage;
+$date       = $_GET['date']    ?? $today;
+$gradeLevel = $_GET['grade']   ?? '';
+$sectionId  = (int)($_GET['section'] ?? 0);
+$typeFilter = $_GET['type']    ?? '';
+$page       = max(1, (int)($_GET['page'] ?? 1));
+$perPage    = 25;
+$offset     = ($page - 1) * $perPage;
 
-// Allowed sections for current user
+// Allowed sections
 $allowedSections = getAllowedSections();
 $allowedIds      = array_column($allowedSections, 'id');
+if (empty($allowedIds)) $allowedIds = [0];
 
-// If teacher has no sections
-if (empty($allowedIds)) {
-    $allowedIds = [0];
-}
+$grades   = getGradeLevels();
+$sections = $allowedSections;
 
-// Build WHERE
-$where  = ["a.date = ?", "s.is_active = 1"];
+// Calendar check
+$calEntry  = getCalendarEntry($date);
+$isHolDate = isHolidayOrNoClass($date);
+
+// ── Build WHERE ───────────────────────────────────────────────
+$where  = ['a.date = ?', 's.is_active = 1'];
 $params = [$date];
 
-// Section restriction
 if (!isAdmin()) {
     $placeholders = implode(',', array_fill(0, count($allowedIds), '?'));
     $where[]      = "s.section_id IN ({$placeholders})";
     $params       = array_merge($params, $allowedIds);
 }
-
 if ($gradeLevel) {
-    $where[]  = "sec.grade_level = ?";
+    $where[]  = 'sec.grade_level = ?';
     $params[] = $gradeLevel;
 }
 if ($sectionId > 0 && (isAdmin() || in_array($sectionId, $allowedIds))) {
-    $where[]  = "s.section_id = ?";
+    $where[]  = 's.section_id = ?';
     $params[] = $sectionId;
 }
 if ($typeFilter) {
-    $where[]  = "a.attendance_type = ?";
+    $where[]  = 'a.attendance_type = ?';
     $params[] = $typeFilter;
 }
 
 $whereSQL = implode(' AND ', $where);
 
-// Count
+// ── Count ─────────────────────────────────────────────────────
 $countStmt = $db->prepare("
-    SELECT COUNT(*) FROM attendance a
+    SELECT COUNT(*)
+    FROM attendance a
     JOIN students s ON a.student_id = s.id
     LEFT JOIN sections sec ON s.section_id = sec.id
     WHERE {$whereSQL}
@@ -67,7 +70,8 @@ $countStmt = $db->prepare("
 $countStmt->execute($params);
 $total = $countStmt->fetchColumn();
 
-// Records
+// ── Records ───────────────────────────────────────────────────
+$orderSQL = gradeLevelOrderSQL('sec.grade_level');
 $stmt = $db->prepare("
     SELECT a.*,
            s.first_name, s.last_name, s.photo, s.lrn,
@@ -76,31 +80,39 @@ $stmt = $db->prepare("
     JOIN students s ON a.student_id = s.id
     LEFT JOIN sections sec ON s.section_id = sec.id
     WHERE {$whereSQL}
-    ORDER BY {$gradeLevelOrderSQL('sec.grade_level')}, sec.section_name,
-             s.last_name, s.first_name
+    ORDER BY {$orderSQL}, sec.section_name, s.last_name, s.first_name
     LIMIT {$perPage} OFFSET {$offset}
 ");
 $stmt->execute($params);
 $records = $stmt->fetchAll();
 
-// Day stats
-$statsWhere  = ["a.date = ?", "s.is_active = 1"];
+// ── Day stats ─────────────────────────────────────────────────
+$statsWhere  = ['a.date = ?', 's.is_active = 1'];
 $statsParams = [$date];
+
 if (!isAdmin()) {
     $placeholders = implode(',', array_fill(0, count($allowedIds), '?'));
     $statsWhere[] = "s.section_id IN ({$placeholders})";
     $statsParams  = array_merge($statsParams, $allowedIds);
 }
-$statsSQL = implode(' AND ', $statsWhere);
+if ($gradeLevel) {
+    $statsWhere[]  = 'sec.grade_level = ?';
+    $statsParams[] = $gradeLevel;
+}
+if ($sectionId > 0) {
+    $statsWhere[]  = 's.section_id = ?';
+    $statsParams[] = $sectionId;
+}
 
-$dayStats = $db->prepare("
+$statsSQL  = implode(' AND ', $statsWhere);
+$dayStats  = $db->prepare("
     SELECT
-        COUNT(*)                                    AS total,
-        SUM(a.attendance_type = 'full_day')         AS full_day,
-        SUM(a.attendance_type = 'partial')          AS partial,
-        SUM(a.attendance_type = 'absent')           AS absent,
-        SUM(a.am_status = 'late')                   AS am_late,
-        SUM(a.pm_status = 'late')                   AS pm_late
+        COUNT(*)                              AS total,
+        SUM(a.attendance_type = 'full_day')  AS full_day,
+        SUM(a.attendance_type = 'partial')   AS partial,
+        SUM(a.attendance_type = 'absent')    AS absent,
+        SUM(a.am_status = 'late')            AS am_late,
+        SUM(a.pm_status = 'late')            AS pm_late
     FROM attendance a
     JOIN students s ON a.student_id = s.id
     LEFT JOIN sections sec ON s.section_id = sec.id
@@ -108,13 +120,6 @@ $dayStats = $db->prepare("
 ");
 $dayStats->execute($statsParams);
 $ds = $dayStats->fetch();
-
-// Calendar entry for selected date
-$calEntry  = getCalendarEntry($date);
-$isHolDate = isHolidayOrNoClass($date);
-
-$grades   = getGradeLevels();
-$sections = getAllowedSections();
 
 include '../includes/header.php';
 include '../includes/sidebar.php';
@@ -138,7 +143,9 @@ include '../includes/sidebar.php';
         <h1 class="page-title">
             <i class="bi bi-calendar3 me-2 text-primary"></i>Attendance
         </h1>
-        <p class="page-subtitle">Daily attendance records — <?= date('F j, Y', strtotime($date)) ?></p>
+        <p class="page-subtitle">
+            Daily records — <?= date('F j, Y', strtotime($date)) ?>
+        </p>
     </div>
     <div class="d-flex gap-2">
         <a href="manual.php" class="btn btn-outline-primary">
@@ -154,50 +161,57 @@ include '../includes/sidebar.php';
 <div class="card mb-3">
     <div class="card-body py-2">
         <form method="GET" class="row g-2 align-items-end">
-            <div class="col-md-2">
+            <div class="col-6 col-md-2">
                 <label class="form-label mb-1 small fw-600">Date</label>
-                <input type="date" name="date" class="form-control form-control-sm"
+                <input type="date" name="date"
+                       class="form-control form-control-sm"
                        value="<?= htmlspecialchars($date) ?>">
             </div>
             <?php if (isAdmin()): ?>
-            <div class="col-md-2">
+            <div class="col-6 col-md-2">
                 <label class="form-label mb-1 small fw-600">Grade</label>
                 <select name="grade" class="form-select form-select-sm">
                     <option value="">All Grades</option>
                     <?php foreach ($grades as $g): ?>
-                    <option value="<?= $g ?>" <?= $gradeLevel === $g ? 'selected' : '' ?>>
+                    <option value="<?= $g ?>"
+                            <?= $gradeLevel === $g ? 'selected' : '' ?>>
                         <?= $g ?>
                     </option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <?php endif; ?>
-            <div class="col-md-2">
+            <div class="col-6 col-md-3">
                 <label class="form-label mb-1 small fw-600">Section</label>
                 <select name="section" class="form-select form-select-sm">
                     <option value="">All Sections</option>
                     <?php foreach ($sections as $sec): ?>
                     <option value="<?= $sec['id'] ?>"
                             <?= $sectionId == $sec['id'] ? 'selected' : '' ?>>
-                        <?= sanitize($sec['section_name']) ?>
+                        <?= sanitize($sec['grade_level'].' — '.$sec['section_name']) ?>
                     </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-6 col-md-2">
                 <label class="form-label mb-1 small fw-600">Type</label>
                 <select name="type" class="form-select form-select-sm">
                     <option value="">All Types</option>
-                    <option value="full_day" <?= $typeFilter === 'full_day' ? 'selected' : '' ?>>Full Day</option>
-                    <option value="partial"  <?= $typeFilter === 'partial'  ? 'selected' : '' ?>>Partial</option>
-                    <option value="absent"   <?= $typeFilter === 'absent'   ? 'selected' : '' ?>>Absent</option>
+                    <option value="full_day"
+                            <?= $typeFilter === 'full_day' ? 'selected' : '' ?>>Full Day</option>
+                    <option value="partial"
+                            <?= $typeFilter === 'partial'  ? 'selected' : '' ?>>Partial</option>
+                    <option value="absent"
+                            <?= $typeFilter === 'absent'   ? 'selected' : '' ?>>Absent</option>
                 </select>
             </div>
             <div class="col-auto d-flex gap-1">
                 <button type="submit" class="btn btn-primary btn-sm">
                     <i class="bi bi-filter me-1"></i>Filter
                 </button>
-                <a href="index.php" class="btn btn-outline-secondary btn-sm">Reset</a>
+                <a href="index.php" class="btn btn-outline-secondary btn-sm">
+                    Reset
+                </a>
             </div>
         </form>
     </div>
@@ -206,12 +220,12 @@ include '../includes/sidebar.php';
 <!-- Day stats -->
 <div class="row g-2 mb-3">
     <?php foreach ([
-        ['Total Records', 'total',    'blue',   'people-fill'],
-        ['Full Day',      'full_day', 'green',  'check-circle-fill'],
-        ['Partial',       'partial',  'orange', 'clock-history'],
-        ['Absent',        'absent',   'red',    'x-circle-fill'],
-        ['AM Late',       'am_late',  'orange', 'sun'],
-        ['PM Late',       'pm_late',  'orange', 'moon'],
+        ['Total',    'total',    'blue',   'people-fill'],
+        ['Full Day', 'full_day', 'green',  'check-circle-fill'],
+        ['Partial',  'partial',  'orange', 'clock-history'],
+        ['Absent',   'absent',   'red',    'x-circle-fill'],
+        ['AM Late',  'am_late',  'orange', 'sun'],
+        ['PM Late',  'pm_late',  'orange', 'moon'],
     ] as [$label,$key,$color,$icon]): ?>
     <div class="col-6 col-md-2">
         <div class="stat-card <?= $color ?> py-2">
@@ -220,7 +234,7 @@ include '../includes/sidebar.php';
                 <i class="bi bi-<?= $icon ?>"></i>
             </div>
             <div>
-                <div class="stat-number" style="font-size:1.3rem">
+                <div class="stat-number" style="font-size:1.2rem">
                     <?= $ds[$key] ?? 0 ?>
                 </div>
                 <div class="stat-label"><?= $label ?></div>
@@ -235,29 +249,29 @@ include '../includes/sidebar.php';
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>
             <i class="bi bi-table me-1"></i>
-            Attendance Records
+            Records
             <span class="badge bg-primary ms-1"><?= $total ?></span>
         </span>
         <?php if (isAdmin()): ?>
-        <a href="../reports/daily.php?date=<?= $date ?>"
+        <a href="../reports/daily.php?date=<?= urlencode($date) ?>&grade=<?= urlencode($gradeLevel) ?>&section=<?= $sectionId ?>"
            class="btn btn-sm btn-outline-success">
-            <i class="bi bi-file-earmark-text me-1"></i>Export Report
+            <i class="bi bi-file-earmark-text me-1"></i>Export
         </a>
         <?php endif; ?>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0" style="font-size:0.82rem">
+            <table class="table table-hover mb-0" style="font-size:0.8rem">
                 <thead>
                     <tr>
                         <th>Student</th>
                         <th>Grade / Section</th>
-                        <th class="text-center">AM In</th>
-                        <th class="text-center">AM Out</th>
-                        <th class="text-center">PM In</th>
-                        <th class="text-center">PM Out</th>
-                        <th class="text-center">AM Status</th>
-                        <th class="text-center">PM Status</th>
+                        <th class="text-center" style="background:#f0fdf4">AM In</th>
+                        <th class="text-center" style="background:#f0fdf4">AM Out</th>
+                        <th class="text-center" style="background:#f0fdf4">AM</th>
+                        <th class="text-center" style="background:#eff6ff">PM In</th>
+                        <th class="text-center" style="background:#eff6ff">PM Out</th>
+                        <th class="text-center" style="background:#eff6ff">PM</th>
                         <th>Type</th>
                         <th>Actions</th>
                     </tr>
@@ -266,7 +280,7 @@ include '../includes/sidebar.php';
                     <?php if (empty($records)): ?>
                     <tr>
                         <td colspan="10" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                            <i class="bi bi-inbox fs-2 d-block mb-2 opacity-25"></i>
                             No attendance records found.
                         </td>
                     </tr>
@@ -292,30 +306,58 @@ include '../includes/sidebar.php';
                             <div class="fw-600"><?= sanitize($r['grade_level'] ?? '—') ?></div>
                             <div class="text-muted"><?= sanitize($r['section_name'] ?? '—') ?></div>
                         </td>
-                        <td class="text-center small">
-                            <?= $r['am_in']  ? date('h:i A', strtotime($r['am_in']))  : '<span class="text-muted">—</span>' ?>
+                        <!-- AM -->
+                        <td class="text-center small" style="background:#fafffe">
+                            <?= $r['am_in']
+                                ? date('h:i A', strtotime($r['am_in']))
+                                : '<span class="text-muted">—</span>' ?>
                         </td>
-                        <td class="text-center small">
-                            <?= $r['am_out'] ? date('h:i A', strtotime($r['am_out'])) : '<span class="text-muted">—</span>' ?>
+                        <td class="text-center small" style="background:#fafffe">
+                            <?= $r['am_out']
+                                ? date('h:i A', strtotime($r['am_out']))
+                                : '<span class="text-muted">—</span>' ?>
                         </td>
-                        <td class="text-center small">
-                            <?= $r['pm_in']  ? date('h:i A', strtotime($r['pm_in']))  : '<span class="text-muted">—</span>' ?>
-                        </td>
-                        <td class="text-center small">
-                            <?= $r['pm_out'] ? date('h:i A', strtotime($r['pm_out'])) : '<span class="text-muted">—</span>' ?>
-                        </td>
-                        <td class="text-center">
+                        <td class="text-center" style="background:#fafffe">
                             <?= sessionStatusBadge($r['am_status']) ?>
                         </td>
-                        <td class="text-center">
-                            <?= $r['schedule_type'] !== 'am_only'
-                                ? sessionStatusBadge($r['pm_status'])
-                                : '<span class="text-muted small">N/A</span>' ?>
+                        <!-- PM -->
+                        <td class="text-center small" style="background:#f5f8ff">
+                            <?= $r['schedule_type'] === 'am_only'
+                                ? '<span class="text-muted small">N/A</span>'
+                                : ($r['pm_in']
+                                    ? date('h:i A', strtotime($r['pm_in']))
+                                    : '<span class="text-muted">—</span>') ?>
+                        </td>
+                        <td class="text-center small" style="background:#f5f8ff">
+                            <?= $r['schedule_type'] === 'am_only'
+                                ? '<span class="text-muted small">N/A</span>'
+                                : ($r['pm_out']
+                                    ? date('h:i A', strtotime($r['pm_out']))
+                                    : '<span class="text-muted">—</span>') ?>
+                        </td>
+                        <td class="text-center" style="background:#f5f8ff">
+                            <?= $r['schedule_type'] === 'am_only'
+                                ? '<span class="text-muted small">N/A</span>'
+                                : sessionStatusBadge($r['pm_status']) ?>
                         </td>
                         <td><?= attendanceTypeBadge($r['attendance_type']) ?></td>
                         <td>
                             <button class="btn btn-sm btn-outline-warning"
-                                    onclick="openOverride(<?= htmlspecialchars(json_encode($r)) ?>)"
+                                    onclick="openOverride(<?= htmlspecialchars(json_encode([
+                                        'id'            => $r['id'],
+                                        'first_name'    => $r['first_name'],
+                                        'last_name'     => $r['last_name'],
+                                        'grade_level'   => $r['grade_level'],
+                                        'section_name'  => $r['section_name'],
+                                        'schedule_type' => $r['schedule_type'],
+                                        'am_in'         => $r['am_in'],
+                                        'am_out'        => $r['am_out'],
+                                        'am_status'     => $r['am_status'],
+                                        'pm_in'         => $r['pm_in'],
+                                        'pm_out'        => $r['pm_out'],
+                                        'pm_status'     => $r['pm_status'],
+                                        'remarks'       => $r['remarks'],
+                                    ]), ENT_QUOTES) ?>)"
                                     title="Override">
                                 <i class="bi bi-pencil"></i>
                             </button>
@@ -330,11 +372,14 @@ include '../includes/sidebar.php';
     <?php if ($total > $perPage): ?>
     <div class="card-footer d-flex justify-content-between align-items-center py-2">
         <small class="text-muted">
-            Showing <?= $offset + 1 ?>–<?= min($offset + $perPage, $total) ?> of <?= $total ?>
+            Showing <?= $offset + 1 ?>–<?= min($offset + $perPage, $total) ?>
+            of <?= $total ?>
         </small>
         <?= paginate($total, $perPage, $page,
-            "index.php?date={$date}&grade=" . urlencode($gradeLevel) .
-            "&section={$sectionId}&type=" . urlencode($typeFilter)) ?>
+            'index.php?date=' . urlencode($date) .
+            '&grade=' . urlencode($gradeLevel) .
+            '&section=' . $sectionId .
+            '&type=' . urlencode($typeFilter)) ?>
     </div>
     <?php endif; ?>
 </div>
@@ -351,17 +396,17 @@ include '../includes/sidebar.php';
             </div>
             <form method="POST" action="override.php">
                 <div class="modal-body">
-                    <input type="hidden" name="attendance_id" id="ovId">
-                    <input type="hidden" name="redirect_date" value="<?= $date ?>">
-                    <input type="hidden" name="schedule_type" id="ovScheduleType">
+                    <input type="hidden" name="attendance_id"  id="ovId">
+                    <input type="hidden" name="redirect_date"  value="<?= htmlspecialchars($date) ?>">
+                    <input type="hidden" name="schedule_type"  id="ovScheduleType">
 
-                    <p class="mb-3 fw-600" id="ovStudentName"></p>
+                    <p class="mb-3 fw-600 small" id="ovStudentName"></p>
 
                     <div class="row g-3">
-                        <!-- AM events -->
+                        <!-- AM -->
                         <div class="col-md-6">
                             <div class="card border-success">
-                                <div class="card-header py-2 bg-light">
+                                <div class="card-header py-2" style="background:#f0fdf4">
                                     <i class="bi bi-sun me-1 text-success"></i>
                                     <strong>AM Session</strong>
                                 </div>
@@ -370,12 +415,14 @@ include '../includes/sidebar.php';
                                         <div class="col-6">
                                             <label class="form-label small">AM In</label>
                                             <input type="time" name="am_in"
-                                                   id="ovAmIn" class="form-control form-control-sm">
+                                                   id="ovAmIn"
+                                                   class="form-control form-control-sm">
                                         </div>
                                         <div class="col-6">
                                             <label class="form-label small">AM Out</label>
                                             <input type="time" name="am_out"
-                                                   id="ovAmOut" class="form-control form-control-sm">
+                                                   id="ovAmOut"
+                                                   class="form-control form-control-sm">
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label small">AM Status</label>
@@ -392,10 +439,10 @@ include '../includes/sidebar.php';
                             </div>
                         </div>
 
-                        <!-- PM events -->
-                        <div class="col-md-6" id="pmSection">
+                        <!-- PM -->
+                        <div class="col-md-6" id="ovPmSection">
                             <div class="card border-primary">
-                                <div class="card-header py-2 bg-light">
+                                <div class="card-header py-2" style="background:#eff6ff">
                                     <i class="bi bi-moon me-1 text-primary"></i>
                                     <strong>PM Session</strong>
                                 </div>
@@ -404,12 +451,14 @@ include '../includes/sidebar.php';
                                         <div class="col-6">
                                             <label class="form-label small">PM In</label>
                                             <input type="time" name="pm_in"
-                                                   id="ovPmIn" class="form-control form-control-sm">
+                                                   id="ovPmIn"
+                                                   class="form-control form-control-sm">
                                         </div>
                                         <div class="col-6">
                                             <label class="form-label small">PM Out</label>
                                             <input type="time" name="pm_out"
-                                                   id="ovPmOut" class="form-control form-control-sm">
+                                                   id="ovPmOut"
+                                                   class="form-control form-control-sm">
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label small">PM Status</label>
@@ -429,7 +478,8 @@ include '../includes/sidebar.php';
                         <div class="col-12">
                             <label class="form-label small">Remarks</label>
                             <textarea name="remarks" id="ovRemarks"
-                                      class="form-control form-control-sm" rows="2"
+                                      class="form-control form-control-sm"
+                                      rows="2"
                                       placeholder="Optional note..."></textarea>
                         </div>
                     </div>
@@ -451,20 +501,24 @@ $extraJS = <<<'JS'
 <script>
 function openOverride(r) {
     document.getElementById('ovId').value          = r.id;
-    document.getElementById('ovStudentName').textContent =
-        r.last_name + ', ' + r.first_name + ' — ' + (r.grade_level||'') + ' / ' + (r.section_name||'');
-    document.getElementById('ovAmIn').value        = r.am_in  || '';
-    document.getElementById('ovAmOut').value       = r.am_out || '';
-    document.getElementById('ovAmStatus').value    = r.am_status || '';
-    document.getElementById('ovPmIn').value        = r.pm_in  || '';
-    document.getElementById('ovPmOut').value       = r.pm_out || '';
-    document.getElementById('ovPmStatus').value    = r.pm_status || '';
-    document.getElementById('ovRemarks').value     = r.remarks || '';
     document.getElementById('ovScheduleType').value = r.schedule_type || 'full_day';
+    document.getElementById('ovStudentName').textContent =
+        (r.last_name || '') + ', ' + (r.first_name || '') +
+        ' — ' + (r.grade_level || '') + ' / ' + (r.section_name || '');
 
-    // Hide PM section for am_only
-    const pmSec = document.getElementById('pmSection');
-    pmSec.style.display = r.schedule_type === 'am_only' ? 'none' : '';
+    // Time values — strip seconds if present
+    const t = v => v ? v.slice(0,5) : '';
+    document.getElementById('ovAmIn').value     = t(r.am_in);
+    document.getElementById('ovAmOut').value    = t(r.am_out);
+    document.getElementById('ovAmStatus').value = r.am_status || '';
+    document.getElementById('ovPmIn').value     = t(r.pm_in);
+    document.getElementById('ovPmOut').value    = t(r.pm_out);
+    document.getElementById('ovPmStatus').value = r.pm_status || '';
+    document.getElementById('ovRemarks').value  = r.remarks  || '';
+
+    // Hide PM for am_only sections
+    document.getElementById('ovPmSection').style.display =
+        r.schedule_type === 'am_only' ? 'none' : '';
 
     new bootstrap.Modal(document.getElementById('overrideModal')).show();
 }

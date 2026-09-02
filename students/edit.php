@@ -1,6 +1,6 @@
 <?php
 /**
- * Edit Student
+ * Edit Student — v2
  */
 require_once '../config/database.php';
 require_once '../includes/functions.php';
@@ -19,36 +19,39 @@ if (!$student) {
     exit;
 }
 
-$sections = $db->query("SELECT * FROM sections WHERE is_active = 1 ORDER BY section_name")->fetchAll();
-$errors   = [];
+$sections = $db->query("
+    SELECT * FROM sections WHERE is_active = 1
+    ORDER BY " . gradeLevelOrderSQL('grade_level') . ", section_name
+")->fetchAll();
+
+$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $lrn           = trim($_POST['lrn'] ?? '');
-    $firstName     = trim($_POST['first_name'] ?? '');
-    $middleName    = trim($_POST['middle_name'] ?? '');
-    $lastName      = trim($_POST['last_name'] ?? '');
-    $gender        = $_POST['gender'] ?? '';
-    $birthDate     = $_POST['birth_date'] ?? '';
-    $address       = trim($_POST['address'] ?? '');
-    $sectionId     = (int)($_POST['section_id'] ?? 0);
-    $parentName    = trim($_POST['parent_name'] ?? '');
+    $lrn           = trim($_POST['lrn']            ?? '');
+    $firstName     = trim($_POST['first_name']     ?? '');
+    $middleName    = trim($_POST['middle_name']    ?? '');
+    $lastName      = trim($_POST['last_name']      ?? '');
+    $gender        = $_POST['gender']              ?? '';
+    $birthDate     = $_POST['birth_date']          ?? '';
+    $address       = trim($_POST['address']        ?? '');
+    $sectionId     = (int)($_POST['section_id']    ?? 0);
+    $parentName    = trim($_POST['parent_name']    ?? '');
     $parentContact = trim($_POST['parent_contact'] ?? '');
-    $parentEmail   = trim($_POST['parent_email'] ?? '');
+    $parentEmail   = trim($_POST['parent_email']   ?? '');
 
     if (empty($lrn))       $errors[] = 'LRN is required.';
     if (empty($firstName)) $errors[] = 'First name is required.';
     if (empty($lastName))  $errors[] = 'Last name is required.';
     if (empty($gender))    $errors[] = 'Gender is required.';
 
-    // Check duplicate LRN — exclude current student
     if (empty($errors)) {
         $check = $db->prepare("SELECT id FROM students WHERE lrn = ? AND id != ?");
         $check->execute([$lrn, $id]);
         if ($check->fetch()) $errors[] = "LRN {$lrn} already used by another student.";
     }
 
-    // Handle photo upload
-    $photo = $student['photo']; // keep existing by default
+    // Photo upload
+    $photo = $student['photo'];
     if (!empty($_FILES['photo']['name'])) {
         $ext     = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg','jpeg','png','gif','webp'];
@@ -68,10 +71,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         $db->prepare("
             UPDATE students SET
-                lrn = ?, first_name = ?, middle_name = ?, last_name = ?,
-                gender = ?, birth_date = ?, address = ?, section_id = ?,
-                photo = ?, parent_name = ?, parent_contact = ?, parent_email = ?
-            WHERE id = ?
+                lrn=?, first_name=?, middle_name=?, last_name=?,
+                gender=?, birth_date=?, address=?, section_id=?,
+                photo=?, parent_name=?, parent_contact=?, parent_email=?
+            WHERE id=?
         ")->execute([
             $lrn, $firstName, $middleName, $lastName,
             $gender, $birthDate ?: null, $address, $sectionId ?: null,
@@ -99,17 +102,15 @@ include '../includes/sidebar.php';
         </h1>
         <p class="page-subtitle">Update student information</p>
     </div>
-    <div class="d-flex gap-2">
-        <a href="view.php?id=<?= $id ?>" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left me-1"></i>Back
-        </a>
-    </div>
+    <a href="view.php?id=<?= $id ?>" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back
+    </a>
 </div>
 
 <?php if (!empty($errors)): ?>
 <div class="alert alert-danger">
     <ul class="mb-0">
-        <?php foreach ($errors as $e) echo "<li>{$e}</li>"; ?>
+        <?php foreach ($errors as $e) echo "<li>" . htmlspecialchars($e) . "</li>"; ?>
     </ul>
 </div>
 <?php endif; ?>
@@ -120,13 +121,13 @@ include '../includes/sidebar.php';
         <!-- Photo -->
         <div class="col-lg-4">
             <div class="card">
-                <div class="card-header">Photo</div>
+                <div class="card-header"><i class="bi bi-camera me-2"></i>Photo</div>
                 <div class="card-body text-center">
                     <img id="photoPreview"
                          src="<?= BASE_URL ?>uploads/students/<?= htmlspecialchars($student['photo']) ?>"
                          class="rounded-circle mb-3"
                          style="width:120px;height:120px;object-fit:cover;border:3px solid #1a56db"
-                         onerror="this.src='https://ui-avatars.com/api/?name=<?= urlencode($student['first_name'].' '.$student['last_name']) ?>&size=120&background=1a56db&color=fff'">
+                         onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=<?= urlencode($student['first_name'].' '.$student['last_name']) ?>&size=120&background=1a56db&color=fff'">
                     <div>
                         <label for="photo" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-camera me-1"></i>Change Photo
@@ -136,12 +137,10 @@ include '../includes/sidebar.php';
                                onchange="previewPhoto(this)">
                     </div>
                     <small class="text-muted d-block mt-1">Max 2MB (JPG, PNG)</small>
-
                     <hr>
-
                     <div class="text-start small">
                         <div class="text-muted mb-1">QR Token</div>
-                        <code style="font-size:0.7rem;word-break:break-all">
+                        <code style="font-size:0.68rem;word-break:break-all">
                             <?= sanitize($student['qr_token']) ?>
                         </code>
                         <div class="mt-2">
@@ -155,7 +154,7 @@ include '../includes/sidebar.php';
             </div>
         </div>
 
-        <!-- Student Info -->
+        <!-- Info -->
         <div class="col-lg-8">
             <div class="card mb-3">
                 <div class="card-header">
@@ -205,16 +204,26 @@ include '../includes/sidebar.php';
                             <input type="date" name="birth_date" class="form-control"
                                    value="<?= htmlspecialchars($_POST['birth_date'] ?? $student['birth_date']) ?>">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-8">
                             <label class="form-label">Section</label>
                             <select name="section_id" class="form-select">
                                 <option value="">Select Section</option>
-                                <?php foreach ($sections as $sec): ?>
+                                <?php
+                                $currentGrade = '';
+                                foreach ($sections as $sec):
+                                    if ($sec['grade_level'] !== $currentGrade):
+                                        if ($currentGrade !== '') echo '</optgroup>';
+                                        echo '<optgroup label="' . sanitize($sec['grade_level']) . '">';
+                                        $currentGrade = $sec['grade_level'];
+                                    endif;
+                                ?>
                                 <option value="<?= $sec['id'] ?>"
                                     <?= ($_POST['section_id'] ?? $student['section_id']) == $sec['id'] ? 'selected' : '' ?>>
                                     <?= sanitize($sec['section_name']) ?>
+                                    (<?= ucfirst(str_replace('_',' ',$sec['schedule_type'])) ?>)
                                 </option>
                                 <?php endforeach; ?>
+                                <?php if ($currentGrade !== '') echo '</optgroup>'; ?>
                             </select>
                         </div>
                         <div class="col-12">
@@ -225,21 +234,21 @@ include '../includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- Parent Info -->
+            <!-- Parent -->
             <div class="card">
                 <div class="card-header">
-                    <i class="bi bi-person-lines-fill me-2"></i>Parent/Guardian
+                    <i class="bi bi-person-lines-fill me-2"></i>Parent / Guardian
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
-                            <label class="form-label">Parent/Guardian Name</label>
+                            <label class="form-label">Name</label>
                             <input type="text" name="parent_name" class="form-control"
                                    value="<?= htmlspecialchars($_POST['parent_name'] ?? $student['parent_name']) ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">
-                                Contact Number
+                                Contact
                                 <i class="bi bi-chat-dots-fill text-info ms-1"
                                    title="Used for SMS notifications"></i>
                             </label>
@@ -263,7 +272,6 @@ include '../includes/sidebar.php';
                 <a href="view.php?id=<?= $id ?>" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </div>
-
     </div>
 </form>
 

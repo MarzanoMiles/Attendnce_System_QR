@@ -1,6 +1,6 @@
 <?php
 /**
- * Add Student
+ * Add Student — v2
  */
 require_once '../config/database.php';
 require_once '../includes/functions.php';
@@ -9,46 +9,50 @@ requireLogin();
 $pageTitle = 'Add Student';
 $db        = getDB();
 $errors    = [];
-$sections  = $db->query("SELECT * FROM sections WHERE is_active = 1 ORDER BY section_name")->fetchAll();
+
+// Get sections with grade level for dropdown
+$sections = $db->query("
+    SELECT * FROM sections
+    WHERE is_active = 1
+    ORDER BY " . gradeLevelOrderSQL('grade_level') . ", section_name
+")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate
-    $lrn          = trim($_POST['lrn'] ?? '');
-    $firstName    = trim($_POST['first_name'] ?? '');
-    $middleName   = trim($_POST['middle_name'] ?? '');
-    $lastName     = trim($_POST['last_name'] ?? '');
-    $gender       = $_POST['gender'] ?? '';
-    $birthDate    = $_POST['birth_date'] ?? '';
-    $address      = trim($_POST['address'] ?? '');
-    $sectionId    = (int)($_POST['section_id'] ?? 0);
-    $parentName   = trim($_POST['parent_name'] ?? '');
-    $parentContact= trim($_POST['parent_contact'] ?? '');
-    $parentEmail  = trim($_POST['parent_email'] ?? '');
+    $lrn           = trim($_POST['lrn']            ?? '');
+    $firstName     = trim($_POST['first_name']     ?? '');
+    $middleName    = trim($_POST['middle_name']    ?? '');
+    $lastName      = trim($_POST['last_name']      ?? '');
+    $gender        = $_POST['gender']              ?? '';
+    $birthDate     = $_POST['birth_date']          ?? '';
+    $address       = trim($_POST['address']        ?? '');
+    $sectionId     = (int)($_POST['section_id']    ?? 0);
+    $parentName    = trim($_POST['parent_name']    ?? '');
+    $parentContact = trim($_POST['parent_contact'] ?? '');
+    $parentEmail   = trim($_POST['parent_email']   ?? '');
 
     if (empty($lrn))       $errors[] = 'LRN is required.';
     if (empty($firstName)) $errors[] = 'First name is required.';
     if (empty($lastName))  $errors[] = 'Last name is required.';
     if (empty($gender))    $errors[] = 'Gender is required.';
 
-    // Check duplicate LRN
     if (empty($errors)) {
         $check = $db->prepare("SELECT id FROM students WHERE lrn = ?");
         $check->execute([$lrn]);
         if ($check->fetch()) $errors[] = "LRN {$lrn} already exists.";
     }
 
-    // Handle photo upload
+    // Photo upload
     $photo = 'default.png';
     if (!empty($_FILES['photo']['name'])) {
-        $ext      = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
-        $allowed  = ['jpg','jpeg','png','gif','webp'];
+        $ext     = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif','webp'];
         if (!in_array($ext, $allowed)) {
             $errors[] = 'Invalid image format.';
         } elseif ($_FILES['photo']['size'] > 2 * 1024 * 1024) {
             $errors[] = 'Photo must be under 2MB.';
         } else {
-            $photo    = 'student_' . time() . '_' . rand(1000,9999) . '.' . $ext;
-            $dest     = BASE_PATH . 'uploads/students/' . $photo;
+            $photo = 'student_' . time() . '_' . rand(1000,9999) . '.' . $ext;
+            $dest  = BASE_PATH . 'uploads/students/' . $photo;
             if (!move_uploaded_file($_FILES['photo']['tmp_name'], $dest)) {
                 $errors[] = 'Failed to upload photo.';
             }
@@ -60,24 +64,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $db->prepare("
             INSERT INTO students
-            (lrn, first_name, middle_name, last_name, gender, birth_date,
-             address, section_id, photo, qr_token, parent_name, parent_contact, parent_email)
+                (lrn, first_name, middle_name, last_name, gender, birth_date,
+                 address, section_id, photo, qr_token,
+                 parent_name, parent_contact, parent_email)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
         $stmt->execute([
-            $lrn, $firstName, $middleName, $lastName, $gender, $birthDate,
-            $address, $sectionId ?: null, $photo, $qrToken,
+            $lrn, $firstName, $middleName, $lastName,
+            $gender, $birthDate ?: null, $address,
+            $sectionId ?: null, $photo, $qrToken,
             $parentName, $parentContact, $parentEmail
         ]);
 
-        $newId = $db->lastInsertId();
+        $newId  = $db->lastInsertId();
 
-        // Auto-generate QR code
-        $qrFile = 'qrcodes/qr_' . $newId . '.png';
-        if (file_exists(BASE_PATH . 'vendor/phpqrcode/qrlib.php')) {
-            require_once BASE_PATH . 'vendor/phpqrcode/qrlib.php';
-            QRcode::png($qrToken, BASE_PATH . $qrFile, QR_ECLEVEL_M, 8, 2);
-            $db->prepare("UPDATE students SET qr_code = ? WHERE id = ?")->execute([$qrFile, $newId]);
+        // Auto-generate QR code using BaconQrCode
+        if (file_exists(BASE_PATH . 'includes/qr_helper.php')) {
+            require_once BASE_PATH . 'includes/qr_helper.php';
+            $qrFile = 'qrcodes/qr_' . $newId . '.png';
+            if (generateQRCode($qrToken, BASE_PATH . $qrFile, 300)) {
+                $db->prepare("UPDATE students SET qr_code = ? WHERE id = ?")
+                   ->execute([$qrFile, $newId]);
+            }
         }
 
         setFlash('success', "Student {$firstName} {$lastName} added successfully!");
@@ -94,8 +102,10 @@ include '../includes/sidebar.php';
 
 <div class="page-header">
     <div>
-        <h1 class="page-title"><i class="bi bi-person-plus-fill me-2 text-primary"></i>Add Student</h1>
-        <p class="page-subtitle">Enroll a new kindergarten student</p>
+        <h1 class="page-title">
+            <i class="bi bi-person-plus-fill me-2 text-primary"></i>Add Student
+        </h1>
+        <p class="page-subtitle">Enroll a new student</p>
     </div>
     <a href="index.php" class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back to List
@@ -112,40 +122,43 @@ include '../includes/sidebar.php';
 </div>
 <?php endif; ?>
 
-<form method="POST" enctype="multipart/form-data" id="addStudentForm" novalidate>
+<form method="POST" enctype="multipart/form-data" novalidate>
     <div class="row g-4">
-        <!-- Left column -->
+
+        <!-- Photo -->
         <div class="col-lg-4">
             <div class="card">
-                <div class="card-header">Photo & QR</div>
+                <div class="card-header">
+                    <i class="bi bi-camera me-2"></i>Photo & QR
+                </div>
                 <div class="card-body text-center">
-                    <div class="mb-3">
-                        <img id="photoPreview"
-                             src="https://ui-avatars.com/api/?name=New+Student&size=150&background=ebf0ff&color=1a56db"
-                             class="student-photo mb-2"
-                             style="width:120px;height:120px">
-                        <div>
-                            <label for="photo" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-camera me-1"></i>Upload Photo
-                            </label>
-                            <input type="file" id="photo" name="photo"
-                                   accept="image/*" class="d-none"
-                                   onchange="previewPhoto(this)">
-                        </div>
-                        <small class="text-muted d-block mt-1">Max 2MB (JPG, PNG)</small>
+                    <img id="photoPreview"
+                         src="https://ui-avatars.com/api/?name=New+Student&size=150&background=ebf0ff&color=1a56db"
+                         class="rounded-circle mb-3"
+                         style="width:120px;height:120px;object-fit:cover;border:3px solid #1a56db">
+                    <div>
+                        <label for="photo" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-camera me-1"></i>Upload Photo
+                        </label>
+                        <input type="file" id="photo" name="photo"
+                               accept="image/*" class="d-none"
+                               onchange="previewPhoto(this)">
                     </div>
-                    <div class="alert alert-info py-2 text-start" style="font-size:0.8rem">
+                    <small class="text-muted d-block mt-1">Max 2MB (JPG, PNG)</small>
+                    <div class="alert alert-info py-2 text-start mt-3" style="font-size:0.8rem">
                         <i class="bi bi-info-circle me-1"></i>
-                        A unique QR code will be automatically generated after saving.
+                        QR code is auto-generated after saving.
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Right column -->
+        <!-- Info -->
         <div class="col-lg-8">
             <div class="card mb-3">
-                <div class="card-header"><i class="bi bi-person me-2"></i>Student Information</div>
+                <div class="card-header">
+                    <i class="bi bi-person me-2"></i>Student Information
+                </div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
@@ -174,8 +187,10 @@ include '../includes/sidebar.php';
                             <label class="form-label">Gender <span class="text-danger">*</span></label>
                             <select name="gender" class="form-select" required>
                                 <option value="">Select...</option>
-                                <option value="Male"   <?= ($_POST['gender'] ?? '') === 'Male'   ? 'selected' : '' ?>>Male</option>
-                                <option value="Female" <?= ($_POST['gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
+                                <option value="Male"
+                                    <?= ($_POST['gender'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option>
+                                <option value="Female"
+                                    <?= ($_POST['gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
                             </select>
                         </div>
                         <div class="col-md-4">
@@ -183,16 +198,27 @@ include '../includes/sidebar.php';
                             <input type="date" name="birth_date" class="form-control"
                                    value="<?= htmlspecialchars($_POST['birth_date'] ?? '') ?>">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-8">
                             <label class="form-label">Section</label>
                             <select name="section_id" class="form-select">
                                 <option value="">Select Section</option>
-                                <?php foreach ($sections as $sec): ?>
+                                <?php
+                                $currentGrade = '';
+                                foreach ($sections as $sec):
+                                    // Group by grade level
+                                    if ($sec['grade_level'] !== $currentGrade):
+                                        if ($currentGrade !== '') echo '</optgroup>';
+                                        echo '<optgroup label="' . sanitize($sec['grade_level']) . '">';
+                                        $currentGrade = $sec['grade_level'];
+                                    endif;
+                                ?>
                                 <option value="<?= $sec['id'] ?>"
                                         <?= ($_POST['section_id'] ?? 0) == $sec['id'] ? 'selected' : '' ?>>
                                     <?= sanitize($sec['section_name']) ?>
+                                    (<?= ucfirst(str_replace('_',' ',$sec['schedule_type'])) ?>)
                                 </option>
                                 <?php endforeach; ?>
+                                <?php if ($currentGrade !== '') echo '</optgroup>'; ?>
                             </select>
                         </div>
                         <div class="col-12">
@@ -203,21 +229,23 @@ include '../includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- Parent -->
             <div class="card">
-                <div class="card-header"><i class="bi bi-person-lines-fill me-2"></i>Parent/Guardian</div>
+                <div class="card-header">
+                    <i class="bi bi-person-lines-fill me-2"></i>Parent / Guardian
+                </div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
-                            <label class="form-label">Parent/Guardian Name</label>
+                            <label class="form-label">Name</label>
                             <input type="text" name="parent_name" class="form-control"
                                    value="<?= htmlspecialchars($_POST['parent_name'] ?? '') ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">
-                                Contact Number
-                                <span class="text-info" title="Used for SMS notifications">
-                                    <i class="bi bi-chat-dots-fill"></i>
-                                </span>
+                                Contact
+                                <i class="bi bi-chat-dots-fill text-info ms-1"
+                                   title="Used for SMS"></i>
                             </label>
                             <input type="text" name="parent_contact" class="form-control"
                                    placeholder="09XXXXXXXXX"
@@ -243,7 +271,7 @@ include '../includes/sidebar.php';
 </form>
 
 <?php
-$extraJS = <<<JS
+$extraJS = <<<'JS'
 <script>
 function previewPhoto(input) {
     if (input.files && input.files[0]) {
